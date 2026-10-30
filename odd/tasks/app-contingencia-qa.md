@@ -51,7 +51,7 @@ Routes: **P** = parent (Opus) inline; **H** = Haiku writer; **S** = Sonnet verif
 | T5 | S11 | H (unit "detail info"), isolated worktree, plus a parent fix | T2 | none | done (unit tests green; device check pending in T8) | `0a63e48`, `e1fe350`, `a4925b2` |
 | T6 | S12 | H, isolated worktree | T5 | none | done (unit tests green; device check pending in T8) | `3b3047d` |
 | T7 | S13 | H, isolated worktree, then S on the release APK | T1-T6 | item 5 (release build) → S verifier | done; static verifier pass; native review approved; device test pending (T8) | `1a03077` |
-| T8 | S7, S14 | S (device E2E via ADB) | T1-T7 | — | pending | — |
+| T8 | S7, S14 | inline (device E2E via USB ADB) | T1-T7 | — | done (L25); group-advance hint not reachable with current data | — |
 
 **Parallel plan.** Wave 1 runs T1, T2 and T4 at once, with disjoint edit surfaces.
 - T1: list screens, list ViewModels and the hosts' refresh wiring.
@@ -149,3 +149,12 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
   - R3-slotfilter-nulls: `RescheduleSlot` fields are non-null `String`s and `AdminSnapshot` defaults to `""`, so a missing snapshot excludes no real slot.
   - R4-poll-refresh-overlap: every polled `refresh()` (`HandlerListViewModel`, `FieldListViewModel`, the three `AdminListViewModels`) returns early while a load is active, so a tick never stacks on a running load.
   - R3-r8-no-release-test: runtime proof needs the phone; it stays in T8.
+- **L25 (2026-10-30):** T8 device E2E on the user's phone over USB ADB (Redmi, 1080x2400), against `https://dleche.famespinoza.net.pe/`.
+  - Release APK from HEAD (R8, 1.85 MB), signed with the debug key and installed over the debug app: no crash; session restored; the coordinator, admin (orders, detail with price breakdown, assignments, incidents, group detail), pickup handler, internal handler and delivery screens all load and parse. This is the runtime proof R8 was missing (closes R3-r8-no-release-test).
+  - B1: revoking the delivery account's sessions in the `sessions` table, then refreshing, returns to login with "Su sesión venció. Inicie sesión de nuevo para continuar."
+  - M2: the admin "Marcar En camino" asks "¿Marcar DLM-77YQS2P2 como En camino?" and, on confirm, shows "El pedido pasó a En camino." after the reload. Order 12 is now IN_TRANSIT and reassigned to Repartidor Prueba (test data).
+  - Plurals render as "1 de 2 pedidos pendientes", "2 (1 entregado, 1 pendiente)", "1 (0 entregados, 1 pendiente)".
+  - Polling (debug build with `dleche.queuePolling=true`, reverted afterwards): the admin list polls every 60 s (06:24:39, 06:25:39), makes 0 requests in 130 s in the background, and reloads on return. Pull-to-refresh issues a new request.
+  - N1 reproduced: after the incident reassignment, the internal handler's list was empty until the admin assigned the handler again.
+  - Not covered: the group-advance hint (no group with all orders in one status) and handler-side advances, which the in-person role cannot perform.
+  - The Xiaomi needed "Depuración USB (ajustes de seguridad)" for input injection.
