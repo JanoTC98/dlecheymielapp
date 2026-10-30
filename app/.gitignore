@@ -1,1 +1,3 @@
 /build
+# Archived R8 mapping.txt per versionCode (see archiveReleaseMapping in build.gradle.kts). Keep them out of git.
+/release-mappings/
