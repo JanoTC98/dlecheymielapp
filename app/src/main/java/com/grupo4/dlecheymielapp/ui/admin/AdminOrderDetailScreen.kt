@@ -48,6 +48,8 @@ import com.grupo4.dlecheymielapp.data.admin.AdminIncident
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderDetail
 import com.grupo4.dlecheymielapp.data.admin.IncidentType
 import com.grupo4.dlecheymielapp.data.admin.RescheduleSlot
+import com.grupo4.dlecheymielapp.data.admin.priceBreakdown
+import com.grupo4.dlecheymielapp.data.admin.refundStatusLabel
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.ui.common.LabeledRow
@@ -159,9 +161,18 @@ private fun SummaryCard(order: AdminOrderDetail) {
         }
         Spacer(Modifier.height(4.dp))
         Text("Compra", style = MaterialTheme.typography.titleMedium)
-        order.items.forEach { LabeledRow("${it.quantity} ×", "${it.name} · ${formatMoney(it.subtotal)}") }
-        LabeledRow("Total:", formatMoney(order.amount))
+        val breakdown = order.priceBreakdown()
+        if (breakdown != null) {
+            // The prices the order was sold with: no fee is derived from the tariff or from subtractions.
+            breakdown.items.forEach { LabeledRow("${it.quantity} ×", "${it.name} · ${formatMoney(it.amount)}") }
+            breakdown.deliveryFee?.let { LabeledRow("Costo de entrega:", formatMoney(it)) }
+            LabeledRow("Total:", formatMoney(breakdown.total ?: order.amount))
+        } else {
+            order.items.forEach { LabeledRow("${it.quantity} ×", "${it.name} · ${formatMoney(it.subtotal)}") }
+            LabeledRow("Total:", formatMoney(order.amount))
+        }
         LabeledRow("Pago:", order.paymentStatus.label + if (order.isPayOnDelivery) " (contra entrega)" else "")
+        order.refundStatus?.let { LabeledRow("Reembolso:", refundStatusLabel(it)) }
         LabeledRow("Confirmado:", formatTimestamp(order.consolidatedAt))
     }
 }

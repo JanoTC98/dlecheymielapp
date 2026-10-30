@@ -122,6 +122,9 @@ object NoCardCallbacks : CardCallbacks {
     override fun refreshPayment() = Unit
 }
 
+/** Said once after a valid code on an order paid at delivery: the order closes only when the payment is approved. */
+const val AWAITING_PAYMENT_MESSAGE = "Código validado. El pedido se cerrará cuando el pago contra entrega esté aprobado."
+
 /**
  * Acts on orders straight from a list card, with the same rules as the order's own screen: one request at a time per
  * order, a stale state is reloaded instead of retried, and an incident is sent once (every POST creates a new one).
@@ -169,7 +172,7 @@ class CardActions(
             try {
                 val result = gateway.handoff(id, code)
                 val message = if (result.awaitingPayment) {
-                    "Código validado. El pedido se cerrará cuando el pago contra entrega esté aprobado."
+                    AWAITING_PAYMENT_MESSAGE
                 } else {
                     "Pedido entregado."
                 }

@@ -111,6 +111,46 @@ data class AdminSnapshot(
 data class AdminOrderItem(val lineNumber: Int = 0, val name: String = "", val quantity: Int = 0, val subtotal: Double = 0.0)
 
 @Serializable
+data class AdminMoney(val amount: Double = 0.0, val currency: String? = null)
+
+/** One priced line as it was sold. The snapshot has no product name: the names come from [AdminOrderDetail.items]. */
+@Serializable
+data class AdminPricedLine(val quantity: Int = 0, val subtotal: Double = 0.0)
+
+/** Prices stored with the order at sale time. Read as they were; never recomputed from the current tariff. */
+@Serializable
+data class AdminPricingSnapshot(
+    val items: List<AdminPricedLine> = emptyList(),
+    val total: Double? = null,
+    val currency: String? = null,
+    val internalDeliveryFee: AdminMoney? = null,
+)
+
+data class PriceLine(val quantity: Int, val name: String, val amount: Double)
+
+data class PriceBreakdown(val items: List<PriceLine>, val deliveryFee: Double?, val total: Double?)
+
+/** The breakdown the order was sold with, or null when the backend sent no snapshot. Amounts are never subtracted to derive a fee. */
+fun AdminOrderDetail.priceBreakdown(): PriceBreakdown? {
+    val pricing = pricingSnapshot ?: return null
+    // The snapshot has no names; they are taken from the item list only when both list the same lines in the same order.
+    val names = items.takeIf { it.size == pricing.items.size }?.map { it.name }
+    return PriceBreakdown(
+        items = pricing.items.mapIndexed { index, line -> PriceLine(line.quantity, names?.get(index) ?: "Artículo ${index + 1}", line.subtotal) },
+        deliveryFee = pricing.internalDeliveryFee?.amount,
+        total = pricing.total,
+    )
+}
+
+/** Labels for the backend's RefundStatus values. An unknown value is shown as it arrives. */
+fun refundStatusLabel(raw: String): String = when (raw) {
+    "refund_pending" -> "Solicitado o en curso"
+    "refunded" -> "Completado"
+    "refund_rejected" -> "Rechazado"
+    else -> raw
+}
+
+@Serializable
 data class AdminActor(val id: Long, val displayName: String)
 
 @Serializable
@@ -136,6 +176,10 @@ data class AdminOrderDetail(
     val fulfillmentSnapshot: AdminSnapshot = AdminSnapshot(),
     val items: List<AdminOrderItem> = emptyList(),
     val paymentStatus: AdminPaymentStatus = AdminPaymentStatus.unknown,
+    /** Null for orders created before the backend stored the price snapshot. */
+    val pricingSnapshot: AdminPricingSnapshot? = null,
+    /** The backend's RefundStatus value (for example "refund_pending"); null when there is no refund. */
+    val refundStatus: String? = null,
     val notes: List<AdminNote> = emptyList(),
     val history: List<AdminHistoryEvent> = emptyList(),
     val incidents: List<AdminIncident> = emptyList(),
@@ -157,6 +201,13 @@ data class RescheduleSlot(
     val timezone: String? = null,
     val remainingCapacity: Int = 0,
 )
+
+/** The full slot identity: same day, same start and same end. */
+fun RescheduleSlot.isSlotOf(snapshot: AdminSnapshot): Boolean =
+    slotDate == snapshot.slotDate && startTime == snapshot.startTime && endTime == snapshot.endTime
+
+/** Drops the slot the order is already in: moving the order there changes nothing. */
+fun List<RescheduleSlot>.excludingSlotOf(snapshot: AdminSnapshot): List<RescheduleSlot> = filterNot { it.isSlotOf(snapshot) }
 
 @Serializable
 data class SlotBody(val slotDate: String, val startTime: String, val endTime: String)
