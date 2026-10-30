@@ -59,8 +59,15 @@ android {
             // Never from local.properties: a release must not poll until the backend closes M3 (shared rate-limit key).
             buildConfigField("boolean", "QUEUE_POLLING_ENABLED", "false")
             buildConfigField("int", "QUEUE_POLLING_SECONDS", "60")
+            // R8 code shrinking, obfuscation, resource optimization. Library consumer rules (Retrofit, OkHttp) apply
+            // automatically; only app-level rules live in proguard-rules.pro.
+            // mapping.txt is written to app/build/outputs/mapping/release/ and must be archived per versionCode with
+            // `archiveReleaseMapping`, otherwise release crashes cannot be deobfuscated.
             optimization {
-                enable = false
+                enable = true
+                keepRules {
+                    files.add(file("proguard-rules.pro"))
+                }
             }
         }
     }
@@ -93,4 +100,15 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+}
+
+// Copies the release R8 mapping.txt to app/release-mappings/<versionCode>/ (git-ignored) so crash stack traces from
+// that build stay deobfuscatable. Run after assembleRelease: `bash gradlew archiveReleaseMapping`.
+tasks.register<Copy>("archiveReleaseMapping") {
+    description = "Archives app/build/outputs/mapping/release/mapping.txt under release-mappings/<versionCode>/."
+    group = "distribution"
+    dependsOn("assembleRelease")
+    val versionCodeValue = checkNotNull(android.defaultConfig.versionCode) { "defaultConfig.versionCode is required" }
+    from(layout.buildDirectory.file("outputs/mapping/release/mapping.txt"))
+    into(layout.projectDirectory.dir("release-mappings/$versionCodeValue"))
 }
