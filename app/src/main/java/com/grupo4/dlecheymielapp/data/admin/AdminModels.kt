@@ -113,14 +113,9 @@ data class AdminOrderItem(val lineNumber: Int = 0, val name: String = "", val qu
 @Serializable
 data class AdminMoney(val amount: Double = 0.0, val currency: String? = null)
 
-/** One priced line as it was sold. The snapshot has no product name: the names come from [AdminOrderDetail.items]. */
-@Serializable
-data class AdminPricedLine(val quantity: Int = 0, val subtotal: Double = 0.0)
-
 /** Prices stored with the order at sale time. Read as they were; never recomputed from the current tariff. */
 @Serializable
 data class AdminPricingSnapshot(
-    val items: List<AdminPricedLine> = emptyList(),
     val total: Double? = null,
     val currency: String? = null,
     val internalDeliveryFee: AdminMoney? = null,
@@ -130,13 +125,15 @@ data class PriceLine(val quantity: Int, val name: String, val amount: Double)
 
 data class PriceBreakdown(val items: List<PriceLine>, val deliveryFee: Double?, val total: Double?)
 
-/** The breakdown the order was sold with, or null when the backend sent no snapshot. Amounts are never subtracted to derive a fee. */
+/**
+ * The breakdown the order was sold with, or null when the backend sent no snapshot. Each line comes from the order's own
+ * persisted items (name, quantity and subtotal together), never paired by position with the unnamed snapshot lines; the fee
+ * and the total come from the snapshot. Amounts are never subtracted to derive a fee.
+ */
 fun AdminOrderDetail.priceBreakdown(): PriceBreakdown? {
     val pricing = pricingSnapshot ?: return null
-    // The snapshot has no names; they are taken from the item list only when both list the same lines in the same order.
-    val names = items.takeIf { it.size == pricing.items.size }?.map { it.name }
     return PriceBreakdown(
-        items = pricing.items.mapIndexed { index, line -> PriceLine(line.quantity, names?.get(index) ?: "Artículo ${index + 1}", line.subtotal) },
+        items = items.sortedBy { it.lineNumber }.map { PriceLine(it.quantity, it.name, it.subtotal) },
         deliveryFee = pricing.internalDeliveryFee?.amount,
         total = pricing.total,
     )

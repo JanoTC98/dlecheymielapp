@@ -63,6 +63,27 @@ class AdminOrderDetailMappingTest {
     }
 
     @Test
+    fun eachLineKeepsItsOwnNameAndSubtotalEvenWhenTheSnapshotListsItemsInAnotherOrder() {
+        // The snapshot lines carry no name; pairing them with the order items by position would put a price next to the wrong product.
+        val twoLines = ORDER_WITH_PRICING
+            .replace(
+                """"items": [{"currency": "PEN", "itemType": "PRODUCT", "quantity": 4, "subtotal": 24.0, "cartItemId": 32, "finalPrice": 6.0}]""",
+                """"items": [{"quantity": 2, "subtotal": 13.0}, {"quantity": 4, "subtotal": 24.0}]""",
+            )
+            .replace(
+                """"items": [{"lineNumber": 1, "itemType": "PRODUCT", "name": "Turrón de Doña Pepa (porción)", "sku": "BOC-TURR-01", "quantity": 4, "subtotal": 24.0, "currency": "PEN"}]""",
+                """"items": [{"lineNumber": 1, "name": "Turrón de Doña Pepa (porción)", "quantity": 4, "subtotal": 24.0}, {"lineNumber": 2, "name": "Cupcake de maracuyá", "quantity": 2, "subtotal": 13.0}]""",
+            )
+
+        val breakdown = parse(twoLines).priceBreakdown()!!
+
+        assertEquals(
+            listOf(PriceLine(4, "Turrón de Doña Pepa (porción)", 24.0), PriceLine(2, "Cupcake de maracuyá", 13.0)),
+            breakdown.items,
+        )
+    }
+
+    @Test
     fun anOrderWithoutPricingSnapshotStillParsesAndHasNoBreakdown() {
         val order = parse(ORDER_WITHOUT_PRICING)
 
