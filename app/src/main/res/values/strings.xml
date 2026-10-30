@@ -14,5 +14,5 @@
         <item quantity="other">%1$d de %2$d pedidos pendientes</item>
     </plurals>
 
-    <string name="group_advance_all">Mueve a la vez todos los pedidos que están %1$s.</string>
+    <string name="group_advance_all">Mueve a la vez todos los pedidos en estado %1$s.</string>
 </resources>
