@@ -80,3 +80,7 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
   - Gap: `HandlerListViewModel` and `FieldListViewModel` `onChanged` did not await the reload. The parent fixed it with RED-then-GREEN (`aCardStaysLockedUntilTheListReloadAfterItsAdvanceFinishes`): `load()` returns its `Job`, and `onChanged` calls `.join()` (`5689de7`).
   - Suite: 99 tests, 0 failures; `assembleDebug` OK.
 - **L9:** `gentle-ai review assess --base-ref 1a35d45 --committed-only --escalate-item 4` gives risk `high`, `review_due` true (`high_risk`); RDD is on (global). Next steps: the Sonnet independent verifier and an optional Codex read-only second opinion, then the native review preflight STATUS (consent prompt to the user).
+- **L10:** Codex (OpenAI, read-only) review of the T2 diff. The parent checked both findings against the code; both are advisories.
+  - Finding 1, `CardActions.settle` could leave a card busy if `onChanged()` throws. Not reproducible today: both implementations (`load().join()` and `PickupGroupViewModel.fetchGroup`) catch their exceptions and only propagate scope cancellation, when the ViewModel is already dead. Defensive `finally` planned.
+  - Finding 2, `OrderDetailViewModel` swallows `CancellationException`. Its broad catches pre-date the change (7 at baseline `1a35d45`), and the detail ViewModels never cancel their own jobs. Planned: rethrow cancellation in the catches touched by T2.
+  - Both hardenings go into the single correction batch after the Sonnet verifier reports.
