@@ -144,3 +144,8 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
   - T8 device E2E: 5-role matrix, B1, a signed release APK on a phone, polling with the debug override, gestures. Needs wireless ADB.
   - Backend items in `docs/PLAN_BACKEND_WEB.md` §9: M3 before turning polling on, the B8 photo API, N1, N2.
   - The Engram mirror is still pending (hook error).
+- **L24 (2026-10-30):** triage of the open review advisories against the code; none needs a change.
+  - R3-pluralquantity-mismatch: the plural keys on `orderCount`, the noun the phrase counts ("1 de 3 pedidos pendientes", "0 de 1 pedido pendiente"); the agreement is correct.
+  - R3-slotfilter-nulls: `RescheduleSlot` fields are non-null `String`s and `AdminSnapshot` defaults to `""`, so a missing snapshot excludes no real slot.
+  - R4-poll-refresh-overlap: every polled `refresh()` (`HandlerListViewModel`, `FieldListViewModel`, the three `AdminListViewModels`) returns early while a load is active, so a tick never stacks on a running load.
+  - R3-r8-no-release-test: runtime proof needs the phone; it stays in T8.
