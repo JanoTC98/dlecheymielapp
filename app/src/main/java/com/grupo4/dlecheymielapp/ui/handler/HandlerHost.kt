@@ -133,6 +133,7 @@ fun FieldOrderDetail(id: Long, gateway: FieldGateway, onUnauthorized: () -> Unit
         onSubmitIncident = vm::submitIncident,
         onRequestPaymentLink = vm::requestPaymentLink,
         onAdvance = vm::advance,
+        onAskAdvance = vm::askAdvance,
         onAskComplete = vm::askComplete,
         onComplete = vm::complete,
         onProviderName = vm::onProviderName,

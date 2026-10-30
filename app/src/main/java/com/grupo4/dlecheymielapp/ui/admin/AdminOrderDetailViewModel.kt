@@ -9,6 +9,8 @@ import com.grupo4.dlecheymielapp.data.admin.RescheduleSlot
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.ui.common.toAdminMessage
+import com.grupo4.dlecheymielapp.ui.handler.leavesStateUnknown
+import com.grupo4.dlecheymielapp.ui.handler.needsAdvanceConfirmation
 import com.grupo4.dlecheymielapp.ui.common.toGenericMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +38,9 @@ sealed interface AdminDialog {
     data class ConfirmUncollectible(val incidentId: Long) : AdminDialog
     data class Desist(val incidentId: Long) : AdminDialog
     data object ConfirmRestoreStock : AdminDialog
+
+    /** The next step is En camino or terminal: the Admin confirms the order code and target status first. */
+    data class ConfirmAdvance(val label: String, val target: OrderStatus) : AdminDialog
 
     data class Assign(
         val title: String,
@@ -92,9 +97,15 @@ class AdminOrderDetailViewModel(
         else -> null
     }
 
+    /** The first call opens the confirmation when the step is En camino or terminal; the confirmed call sends it. */
     fun advance() {
         val order = _state.value.order ?: return
         val (target, _) = nextStep(order) ?: return
+        if (target.needsAdvanceConfirmation() && _state.value.dialog !is AdminDialog.ConfirmAdvance) {
+            val label = order.publicCode ?: "Pedido ${order.id}"
+            _state.update { it.copy(dialog = AdminDialog.ConfirmAdvance(label, target), actionError = null) }
+            return
+        }
         act("El pedido pasó a ${target.label}.") { repository.advance(id, order.status, target) }
     }
 
@@ -272,7 +283,10 @@ class AdminOrderDetailViewModel(
 
     fun clearMessage() = _state.update { it.copy(message = null, actionError = null) }
 
-    /** Runs one write at a time (no idempotency keys on these endpoints), then reloads the order. */
+    /**
+     * Runs one write at a time (no idempotency keys on these endpoints), then reloads the order. The write stays busy
+     * until that reload has finished; after a timeout, a dropped connection or a conflict the order is reloaded first.
+     */
     private fun act(success: String, block: suspend () -> Unit) {
         if (_state.value.busy) return
         _state.update { it.copy(busy = true, message = null, actionError = null) }
@@ -283,11 +297,21 @@ class AdminOrderDetailViewModel(
                 _state.update { it.copy(busy = false, order = order, dialog = null, message = success, noteText = "") }
             } catch (e: Exception) {
                 fail(e) { text ->
-                    _state.update { it.copy(busy = false, actionError = text, dialog = if (it.dialog is AdminDialog.Slot) it.dialog else null) }
+                    _state.update { it.copy(actionError = text, dialog = if (it.dialog is AdminDialog.Slot || it.dialog is AdminDialog.ConfirmAdvance) null else it.dialog) }
                 }
-                // The order moved under us: show its real state instead of leaving a stale screen.
-                if (e is ApiException && e.code in setOf("ORDER_STATE_CHANGED", "INCIDENT_NOT_OPEN", "ORDER_ALREADY_TERMINAL")) load()
+                // The order moved under us or its outcome is unknown: show its real state before the actions unlock.
+                if (e.leavesStateUnknown() || (e is ApiException && e.code in setOf("INCIDENT_NOT_OPEN", "ORDER_ALREADY_TERMINAL"))) reloadOrder()
+                _state.update { it.copy(busy = false) }
             }
+        }
+    }
+
+    private suspend fun reloadOrder() {
+        try {
+            val order = repository.order(id)
+            _state.update { it.copy(order = order) }
+        } catch (e: Exception) {
+            fail(e) { text -> _state.update { it.copy(actionError = text) } }
         }
     }
 

@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -30,6 +31,8 @@ private class FakeGateway(override val capabilities: FieldCapabilities = FieldCa
     var completeCalls = 0
     var handoff: suspend (String) -> HandoffResult = { HandoffResult(1, OrderStatus.DELIVERED) }
     var advanceError: Exception? = null
+    /** When set, the POST suspends until this completes, to simulate a slow request. */
+    var advanceGate: CompletableDeferred<Unit>? = null
 
     override suspend fun order(id: Long): HandlerOrderWork = error("not used")
     override suspend fun incidents(id: Long): List<FieldIncident> = emptyList()
@@ -41,15 +44,17 @@ private class FakeGateway(override val capabilities: FieldCapabilities = FieldCa
     var linkCalls = 0
     var link: suspend () -> String = { "https://pago.example/abc" }
     override suspend fun paymentLink(id: Long): String { linkCalls++; return link() }
-    override suspend fun advance(id: Long, expected: OrderStatus) { advanceCalls++; advanceError?.let { throw it } }
+    override suspend fun advance(id: Long, expected: OrderStatus) { advanceCalls++; advanceGate?.await(); advanceError?.let { throw it } }
     override suspend fun complete(id: Long) { completeCalls++ }
 }
 
 class CardActionsTest {
     private var changes = 0
     private var unauthorized = 0
+    /** When set, the list reload suspends until this completes, to simulate a slow reload. */
+    private var reloadGate: CompletableDeferred<Unit>? = null
 
-    private fun TestScope.actions(gateway: FieldGateway) = CardActions(this, gateway, { unauthorized++ }, { changes++ })
+    private fun TestScope.actions(gateway: FieldGateway) = CardActions(this, gateway, { unauthorized++ }, { changes++; reloadGate?.await() })
 
     @Test
     fun validCodeDeliversClearsTheFieldAndReloadsTheList() = runTest {
@@ -185,7 +190,7 @@ class CardActionsTest {
         val gateway = FakeGateway(FieldCapabilities(canAdvance = true)).apply { advanceError = ApiException(409, "ORDER_STATE_CHANGED", "x") }
         val actions = actions(gateway)
 
-        actions.advance(3, OrderStatus.CONFIRMED)
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
         advanceUntilIdle()
 
         assertEquals(1, gateway.advanceCalls)
@@ -194,11 +199,115 @@ class CardActionsTest {
     }
 
     @Test
+    fun aSecondTapWhileThePostAndTheReloadAreInFlightSendsNothing() = runTest {
+        val gateway = FakeGateway(FieldCapabilities(canAdvance = true)).apply { advanceGate = CompletableDeferred() }
+        reloadGate = CompletableDeferred()
+        val actions = actions(gateway)
+
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
+        runCurrent()
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
+        runCurrent()
+        assertEquals(1, gateway.advanceCalls)
+
+        gateway.advanceGate!!.complete(Unit)
+        runCurrent()
+        // The POST has returned but the list is still reloading: the card must stay locked.
+        assertTrue(actions.state.value.card(3).busy)
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
+        runCurrent()
+        assertEquals(1, gateway.advanceCalls)
+
+        reloadGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(actions.state.value.card(3).busy)
+        assertEquals(1, gateway.advanceCalls)
+        assertEquals(1, changes)
+    }
+
+    @Test
+    fun aConflictOrTimeoutReloadsBeforeTheCardUnlocks() = runTest {
+        val gateway = FakeGateway(FieldCapabilities(canAdvance = true)).apply { advanceError = ApiException(409, "ORDER_STATE_CHANGED", "x") }
+        reloadGate = CompletableDeferred()
+        val actions = actions(gateway)
+
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
+        runCurrent()
+        assertEquals(1, changes)
+        assertTrue("the reload must finish before another attempt", actions.state.value.card(3).busy)
+
+        reloadGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(actions.state.value.card(3).busy)
+    }
+
+    @Test
+    fun anIoExceptionAlsoReloadsBeforeTheCardUnlocks() = runTest {
+        val gateway = FakeGateway(FieldCapabilities(canAdvance = true)).apply { advanceError = IOException("timeout") }
+        reloadGate = CompletableDeferred()
+        val actions = actions(gateway)
+
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
+        runCurrent()
+        assertEquals(1, changes)
+        assertTrue(actions.state.value.card(3).busy)
+
+        reloadGate!!.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(actions.state.value.card(3).busy)
+    }
+
+    @Test
+    fun aSingleAdvanceFromConfirmedStillWorks() = runTest {
+        val gateway = FakeGateway(FieldCapabilities(canAdvance = true))
+        val actions = actions(gateway)
+
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
+        advanceUntilIdle()
+
+        assertEquals(1, gateway.advanceCalls)
+        assertEquals("El pedido pasó a En preparación.", actions.state.value.card(3).message)
+        assertFalse(actions.state.value.card(3).busy)
+        assertEquals(1, changes)
+    }
+
+    @Test
+    fun enCaminoNeedsConfirmationBeforeTheRequestIsSent() = runTest {
+        val gateway = FakeGateway(FieldCapabilities(canAdvance = true))
+        val actions = actions(gateway)
+
+        actions.advance(3, OrderStatus.PREPARING, "DLM-3")
+        advanceUntilIdle()
+        assertEquals(0, gateway.advanceCalls)
+        assertEquals(PendingAdvance(3, "DLM-3", OrderStatus.PREPARING, OrderStatus.IN_TRANSIT), actions.state.value.advanceFor)
+
+        actions.cancelAdvance()
+        assertNull(actions.state.value.advanceFor)
+        assertEquals(0, gateway.advanceCalls)
+
+        actions.advance(3, OrderStatus.PREPARING, "DLM-3")
+        actions.confirmAdvance()
+        advanceUntilIdle()
+        assertEquals(1, gateway.advanceCalls)
+        assertNull(actions.state.value.advanceFor)
+        assertEquals("El pedido pasó a En camino.", actions.state.value.card(3).message)
+    }
+
+    @Test
+    fun terminalStatusesAreTheOnesThatNeedConfirmation() {
+        assertTrue(OrderStatus.IN_TRANSIT.needsAdvanceConfirmation())
+        assertTrue(OrderStatus.DELIVERED.needsAdvanceConfirmation())
+        assertTrue(OrderStatus.CANCELLED.needsAdvanceConfirmation())
+        assertFalse(OrderStatus.PREPARING.needsAdvanceConfirmation())
+        assertFalse(OrderStatus.READY_FOR_PICKUP.needsAdvanceConfirmation())
+    }
+
+    @Test
     fun onlyTheRolesThatCanAdvanceOrCompleteDo() = runTest {
         val gateway = FakeGateway()
         val actions = actions(gateway)
 
-        actions.advance(3, OrderStatus.CONFIRMED)
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
         actions.askComplete(3)
         actions.complete()
         advanceUntilIdle()
@@ -286,6 +395,7 @@ class CardActionsTest {
         actions.openPayment(payable())
         advanceUntilIdle()
         actions.refreshPayment()
+        advanceUntilIdle()
 
         assertNull(actions.state.value.payment)
         assertEquals(1, changes)

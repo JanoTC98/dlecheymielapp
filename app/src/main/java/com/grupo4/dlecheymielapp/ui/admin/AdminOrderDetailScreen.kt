@@ -373,6 +373,12 @@ private fun Dialogs(dialog: AdminDialog, state: AdminOrderDetailState, actions: 
             onConfirm = actions.onConfirmRestoreStock, onDismiss = actions.onCloseDialog,
         )
 
+        is AdminDialog.ConfirmAdvance -> ConfirmDialog(
+            title = "Confirmar cambio de estado", busy = busy, confirmLabel = "Confirmar", error = state.actionError,
+            text = "¿Marcar ${dialog.label} como ${dialog.target.label}?",
+            onConfirm = actions.onAdvance, onDismiss = actions.onCloseDialog,
+        )
+
         is AdminDialog.Desist -> AlertDialog(
             onDismissRequest = actions.onCloseDialog,
             title = { Text("El cliente desistió") },
