@@ -6,18 +6,18 @@
 
 ## 1. Resumen
 
-| ID | Riesgo | Hallazgo | Entrega | Depende de backend |
-|---|---|---|---|---|
-| A1 | Alto | Deslizar para actualizar no funciona con la lista vacía | 1 | No |
-| A2 | Alto | Las listas no se recargan al volver ni al cambiar de pestaña | 1 | Sí, el polling espera a M3 |
-| M2 | Medio | Doble avance de estado sin confirmación | 1 | Opcional (ver §3) |
-| M1 | Medio | La cookie de sesión se transfiere entre dispositivos | 2 | No |
-| B1 | Bajo | Aviso de sesión vencida | 2 (solo verificar) | No |
-| B2 | Bajo | "Cerrar sesión" solo en la pestaña Pedidos | 2 | No |
-| B7 | Bajo | Teléfono del proveedor sin validar | 2 | Sí (regla común) |
-| B8 | Bajo | Incidencias: sin feedback al enviar vacía y sin foto | 3 | Sí, la foto requiere API nueva |
-| B9 | Bajo | Detalle de pedido y textos | 3 | No (los datos ya llegan) |
-| B5 | Bajo | Release sin ofuscación | 3 | No |
+| ID | Riesgo | Hallazgo | Entrega | Depende de backend | Estado (2026-10-30) |
+|---|---|---|---|---|---|
+| A1 | Alto | Deslizar para actualizar no funciona con la lista vacía | 1 | No | ✅ Hecho (`7667bc7`); gesto verificado en el celular |
+| A2 | Alto | Las listas no se recargan al volver ni al cambiar de pestaña | 1 | Sí, el polling espera a M3 | ✅ Hecho en la app (`488f5f2`, `6e844af`); polling apagado hasta M3 |
+| M2 | Medio | Doble avance de estado sin confirmación | 1 | Opcional (ver §3) | ✅ Hecho (`59c08fd`, `5689de7`, `4d81ce8`); confirmación verificada en el celular |
+| M1 | Medio | La cookie de sesión se transfiere entre dispositivos | 2 | No | ✅ Hecho (`fc131f5`, exclusión de backup); falta la prueba de restauración |
+| B1 | Bajo | Aviso de sesión vencida | 2 (solo verificar) | No | ✅ Verificado en el APK |
+| B2 | Bajo | "Cerrar sesión" solo en la pestaña Pedidos | 2 | No | ✅ Hecho (`7667bc7`) |
+| B7 | Bajo | Teléfono del proveedor sin validar | 2 | Sí (regla común) | ✅ Hecho en la app (`dc601d9`, `4d81ce8`); falta la regla en el backend (N4) |
+| B8 | Bajo | Incidencias: sin feedback al enviar vacía y sin foto | 3 | Sí, la foto requiere API nueva | 🟡 Parcial: validación de texto hecha (`dc601d9`); la foto espera la API |
+| B9 | Bajo | Detalle de pedido y textos | 3 | No (los datos ya llegan) | 🟡 Parcial: hecho con los datos actuales (`0a63e48`, `e1fe350`, `a4925b2`, `3b3047d`); personalización legible espera N2 |
+| B5 | Bajo | Release sin ofuscación | 3 | No | ✅ Hecho (`1a03077`); R8 verificado en el celular |
 
 **Bloqueantes para distribuir la app:** A1, A2 y M2.
 
@@ -135,12 +135,12 @@
 
 Para ADMIN, DELIVERY_HANDLER (recojo), DELIVERY_HANDLER (entrega en persona), DELIVERY y DELIVERY_COORDINATOR, probar:
 
-- cola vacía y con datos;
-- asignación y reasignación;
-- volver del fondo y cambiar de pestaña;
-- pérdida de conexión;
-- sesión revocada;
-- acceso a pedidos fuera de su alcance.
+- [x] cola vacía y con datos;
+- [x] asignación y reasignación (la reasignación por incidencia pierde el encargado: N1, backend);
+- [x] volver del fondo y cambiar de pestaña;
+- [ ] pérdida de conexión;
+- [x] sesión revocada;
+- [ ] acceso a pedidos fuera de su alcance.
 
 ### Flujos todavía sin probar en la app
 
@@ -153,23 +153,23 @@ Para ADMIN, DELIVERY_HANDLER (recojo), DELIVERY_HANDLER (entrega en persona), DE
 
 ### Capas de prueba
 
-- Unitarias de reglas y estados de los ViewModels.
-- UI (Compose) para el gesto de actualizar, la navegación y el doble toque.
-- APK release en un dispositivo real.
+- [x] Unitarias de reglas y estados de los ViewModels (121 tests).
+- [ ] UI (Compose) para el gesto de actualizar, la navegación y el doble toque (verificado a mano en el celular, sin tests automáticos).
+- [x] APK release en un dispositivo real.
 
 ---
 
 ## 7. Despliegue y reversión
 
 **Preparación**
-- Inicializar Git en `dlecheymielapp` (no tiene metadatos) o fijar una copia de referencia del código probado.
-- Identificar el APK exacto probado (`versionCode`, firma y URL del API).
+- [x] Inicializar Git en `dlecheymielapp` (no tiene metadatos) o fijar una copia de referencia del código probado.
+- [ ] Identificar el APK exacto probado (`versionCode`, firma y URL del API). Falta la clave de firma de release.
 
 **Orden**
-1. APK piloto con la Entrega 1, **sin polling** hasta que el backend cierre M3.
-2. Activar el polling después de M3.
-3. Entregas 2 y 3.
-4. Ampliar a todo el personal después de un turno completo sin problemas.
+1. [ ] APK piloto con la Entrega 1, **sin polling** hasta que el backend cierre M3.
+2. [ ] Activar el polling después de M3.
+3. [ ] Entregas 2 y 3 (código listo; falta B8 foto y N2).
+4. [ ] Ampliar a todo el personal después de un turno completo sin problemas.
 
 **Reversión**
 - Tener lista una versión de recuperación firmada con la misma clave y un `versionCode` mayor. No depender de desinstalar, que borra datos.
@@ -178,7 +178,7 @@ Para ADMIN, DELIVERY_HANDLER (recojo), DELIVERY_HANDLER (entrega en persona), DE
 
 ## 8. Criterios de cierre
 
-- A1, A2 y M2 pasan su aceptación en el APK candidato.
-- M1 pasa la prueba de restauración y migración.
-- B1 queda verificado en el APK.
-- Un turno piloto termina sin pedidos invisibles ni avances accidentales.
+- [x] A1, A2 y M2 pasan su aceptación en el APK candidato.
+- [ ] M1 pasa la prueba de restauración y migración.
+- [x] B1 queda verificado en el APK.
+- [ ] Un turno piloto termina sin pedidos invisibles ni avances accidentales.
