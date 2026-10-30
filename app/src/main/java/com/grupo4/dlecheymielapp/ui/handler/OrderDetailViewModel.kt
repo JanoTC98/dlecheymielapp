@@ -8,6 +8,7 @@ import com.grupo4.dlecheymielapp.data.fulfillment.FieldGateway
 import com.grupo4.dlecheymielapp.data.fulfillment.FieldIncident
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerOrderWork
+import com.grupo4.dlecheymielapp.data.fulfillment.IncidentStatus
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.data.fulfillment.PaymentStatus
 import com.grupo4.dlecheymielapp.data.fulfillment.Provider
@@ -72,7 +73,10 @@ data class OrderDetailState(
     /** The Operador closes an order paid in advance with a button, not a code. */
     val closesWithoutCode: Boolean get() = capabilities.canComplete && order?.payAtDelivery == null
 
-    val canHandoff: Boolean get() = order?.status == handoffStatus && !handoffBusy
+    /** The Administrator decides an open incident (reassign, refund, write off); until then the order cannot be handed over. */
+    val hasOpenIncident: Boolean get() = incidents.any { it.status == IncidentStatus.OPEN }
+
+    val canHandoff: Boolean get() = order?.status == handoffStatus && !handoffBusy && !hasOpenIncident
     val codeReady: Boolean get() = code.trim().isNotEmpty()
     val canReportIncident: Boolean get() = order?.status?.let { !it.isTerminal } == true
 
@@ -196,7 +200,7 @@ class OrderDetailViewModel(
 
     fun complete() {
         val current = _state.value
-        if (current.actionBusy || !current.closesWithoutCode || current.order?.status != OrderStatus.IN_TRANSIT) return
+        if (current.actionBusy || !current.closesWithoutCode || current.order?.status != OrderStatus.IN_TRANSIT || current.hasOpenIncident) return
         _state.update { it.copy(actionBusy = true, actionError = null, actionMessage = null, confirmComplete = false) }
         viewModelScope.launch {
             var reload = true

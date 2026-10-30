@@ -164,8 +164,47 @@ class AdminOrderDetailViewModel(
         val incidentId = dialog.incidentId
         if (incidentId == null) {
             act("El pedido se reabrió en la nueva franja.") { repository.reopen(id, slot) }
+        } else if (_state.value.order?.fulfillmentSnapshot?.mode == FulfillmentMode.INTERNAL_DELIVERY) {
+            // The server drops the Encargado when it moves the order, so the Admin decides who delivers it in the new slot:
+            // the same one, another one, or later. The previous Encargado is read first because the reassignment erases it.
+            var previous: Long? = null
+            act("Pedido reasignado. Se avisó al cliente por correo.", after = { openHandlerAfterReassign(previous) }) {
+                previous = runCatching { repository.orderAssignment(id).handlerId }.getOrNull()
+                repository.reassign(id, incidentId, slot)
+            }
         } else {
             act("Pedido reasignado. Se avisó al cliente por correo.") { repository.reassign(id, incidentId, slot) }
+        }
+    }
+
+    private fun openHandlerAfterReassign(previous: Long?) {
+        _state.update { it.copy(dialog = AdminDialog.Assign("¿Quién entrega el pedido reasignado?"), actionError = null) }
+        viewModelScope.launch {
+            try {
+                val candidates = repository.orderCandidates(id)
+                val choices = buildList {
+                    candidates.sortedByDescending { it.id == previous }.forEach { c ->
+                        add(
+                            AssignChoice(
+                                key = "h:${c.id}", label = c.displayName,
+                                hint = when {
+                                    !c.available -> c.conflict?.let { "Ocupado ${it.startTime}–${it.endTime}" } ?: "No disponible"
+                                    c.id == previous -> "Tenía este pedido"
+                                    else -> null
+                                },
+                                enabled = c.available,
+                            ),
+                        )
+                    }
+                    add(AssignChoice("later", "Dejarlo sin encargado por ahora", "Aparecerá sin asignar hasta que lo elija."))
+                }
+                val previousName = candidates.firstOrNull { it.id == previous }?.displayName
+                updateAssign { it.copy(loading = false, choices = choices, current = previousName?.let { name -> "Antes: $name" } ?: "Sin encargado") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fail(e) { text -> updateAssign { it.copy(loading = false, error = text) } }
+            }
         }
     }
 
@@ -341,6 +380,7 @@ class AdminOrderDetailViewModel(
             key.startsWith("e:") -> act("Pedido enviado al Delivery.") { repository.sendToDeliveryEmployee(id, key.removePrefix("e:").toLong()) }
             key == "op" -> act("Pedido enviado al Operador.") { repository.sendToOperator(id) }
             key == "self" -> act("El pedido queda para entrega del Administrador.") { repository.clearDeliveryDestination(id) }
+            key == "later" -> closeDialog()
         }
     }
 
@@ -357,7 +397,7 @@ class AdminOrderDetailViewModel(
      * Runs one write at a time (no idempotency keys on these endpoints), then reloads the order. The write stays busy
      * until that reload has finished; after a timeout, a dropped connection or a conflict the order is reloaded first.
      */
-    private fun act(success: String, block: suspend () -> Unit) {
+    private fun act(success: String, after: (() -> Unit)? = null, block: suspend () -> Unit) {
         if (_state.value.busy) return
         _state.update { it.copy(busy = true, message = null, actionError = null) }
         viewModelScope.launch {
@@ -365,6 +405,7 @@ class AdminOrderDetailViewModel(
                 block()
                 val order = repository.order(id)
                 _state.update { it.copy(busy = false, order = order, dialog = null, message = success, noteText = "") }
+                after?.invoke()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

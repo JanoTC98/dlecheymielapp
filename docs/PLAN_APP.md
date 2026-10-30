@@ -219,3 +219,19 @@ Sin cambios necesarios (verificados contra el contrato): login/sesión/CSRF, Enc
 - Probar contra la API nueva levantada en local o en el servidor de pruebas cuando se actualice (se dejó fuera a pedido): causa, reembolso, reembolso tras pérdida, WhatsApp y las notificaciones en un celular real.
 - Verificar el APK release firmado (solo se compiló sin firma; el lint offline no se pudo correr por falta de caché de dependencias).
 - Los pendientes de las secciones anteriores que dependen del backend (M3, N1, N2, foto de incidencias) siguen igual.
+
+## 10. Decisiones del negocio (2026-10-30) y su efecto en la app
+
+La app es una extensión de la página para cada rol de campo: se siguen las mismas reglas que la web. Detalle y pedidos al backend en `PLAN_BACKEND_WEB.md` §10.
+
+| ID | Decisión | Estado en la app |
+|---|---|---|
+| M5 | El código de entrega se puede ingresar en cualquier momento en que el pedido esté en estado de entrega, salvo con una incidencia abierta. | ✅ Hecho: el detalle del pedido y la tarjeta de la lista no registran la entrega con una incidencia abierta (también el "Marcar como entregado" del Operador). Con una incidencia ya resuelta se puede entregar. Solo la app lo exige hoy. |
+| N1 | Reasignar lo hace el Admin, que decide si el pedido queda con el mismo encargado, otro o para después. | ✅ Hecho: tras reasignar un envío en persona se abre la elección (el anterior aparece primero con "Tenía este pedido"). |
+| D1 | Opción B: exención del captcha para la app con `X-App-Client`. | ⏳ Espera al backend. Con el captcha apagado, que es el valor por defecto, la app entra sin él. |
+| D3 | Habrá notificaciones. | 🟡 Hay avisos locales cada 15 minutos (§9). El aviso inmediato espera FCM y el endpoint de registro del dispositivo. |
+| D4 | El Admin que se entrega un Delivery lo cierra con código y registro del pago, como el Delivery interno. | ⏳ Espera las rutas del backend; después se reutiliza la pantalla del Delivery interno. |
+
+### Estado de las casillas de cierre
+
+Siguen abiertas, porque no se pueden cerrar desde el código: pérdida de conexión y acceso fuera de alcance en la matriz por rol (§6); DELIVERY con pedidos, pago contra entrega, packs y combos, y reembolsos (§6); APK piloto, polling tras M3 y entregas 2 y 3 completas (§7); prueba de restauración de M1 y turno piloto (§8). Los tests unitarios suman 137.

@@ -151,7 +151,7 @@ Una sola entidad, un solo campo de texto. Los tres roles de campo la reportan; s
 Reglas:
 - Se puede reportar solo en `CONFIRMED`, `PREPARING`, `READY_FOR_PICKUP`, `IN_TRANSIT` (`409 ORDER_NOT_OPERATIONAL` en otro caso).
 - El pedido **no cambia de estado** al reportar. El Admin recibe notificación (campana).
-- Al reasignar: el pedido va a otra franja, **pierde su asignación** (desaparece de la lista del campo) y **conserva** `READY_FOR_PICKUP` o `IN_TRANSIT`.
+- Al reasignar: el pedido va a otra franja, **pierde su asignación** (desaparece de la lista del campo) y **conserva** `READY_FOR_PICKUP` o `IN_TRANSIT`. En entrega en persona el **Admin decide quién lo entrega** en la nueva franja: el mismo encargado, otro, o lo deja para después (la app abre esa elección justo después de reasignar; N1).
 - Cada `POST …/incidents` crea una incidencia nueva → **deshabilitar el botón mientras envía** (no hay idempotency key).
 - Los pedidos `LOST` o reasignados dejan de aparecer para Encargado/Delivery/Operador.
 
@@ -367,13 +367,13 @@ Cualquier otra ruta `/delivery/**` o `/operator/**` está **denegada** (`denyAll
 
 1. **Docs obsoletos** (tabla de la sección 0): `newdocumentation` v13/v14 y los `AGENTS.md` mantienen foto, "llegué", 4 min, Mercado Pago, "sin capacidad por franja" y etiquetas viejas ("Recojo en universidad", "Entrega interna"). No usarlos.
 2. **OpenAPI `BusinessOrderV1.deliveryCode`** dice "siempre nulo para DELIVERY externo"; el código lo genera para todas las modalidades. Pendiente corregir el contrato.
-3. **El Admin que entrega Delivery en persona** (sin destino): el contrato no ofrece ningún endpoint de Admin para cerrar a `DELIVERED`. El texto del web ("Se cierra con el código de entrega o la entrega manual") es ambiguo. **[?] Sin cerrar:** confirmar con negocio/backend cómo cierra el Admin sus propios Delivery.
+3. **El Admin que entrega Delivery en persona** (sin destino): el contrato no ofrece ningún endpoint de Admin para cerrar a `DELIVERED`. **Decidido (D4, 2026-10-30):** lo cierra con el código de entrega y registrando el pago, como el Delivery interno. Falta la ruta en el backend.
 4. **Lista de Delivery/Operador incluye pedidos terminales** (`DELIVERED`, `CANCELLED`, `LOST`…) mientras siga el destino; `LOST`/reasignados desaparecen. La app debe filtrar y ordenar.
 5. **Operador sin `GET …/incidents`**; se usa `coordination`. El cliente web ya lo maneja así.
 6. **Sin push.** Solo recordatorios por polling y correo (solo Admin/Encargado). Ver D3.
 7. **Texto de términos del pago contra entrega** (`v1`) es una propuesta sin aprobar por el negocio; el pago contra entrega sigue apagado por defecto y falta la prueba de punta a punta con Culqi sandbox [D, corte 4].
 8. **Regla pendiente del negocio:** cargo creado después de `LOST` y política de 7 días frente a las 24 h de `LOST` [D, corte 3].
-9. **Cuándo habilitar la validación de entrega en recojo:** el Encargado PICKUP depende de que el Admin marque `READY_FOR_PICKUP`. Si el Admin olvida avanzar, el Encargado no puede entregar. No hay un atajo de campo.
+9. **Cuándo habilitar la validación de entrega (M5, decidido 2026-10-30):** el cliente recibe el código por correo al comprar, y el rol puede ingresarlo **en cualquier momento** en que el pedido esté en el estado de entrega (`READY_FOR_PICKUP` en recojo; `IN_TRANSIT` en las demás modalidades), sin esperar a que empiece la franja. **Excepción:** mientras el pedido tenga una incidencia abierta no se registra la entrega; la decide el Admin (reasignar, reembolsar o dar por perdido). La app lo aplica así; el backend y la web todavía no lo exigen (ver `PLAN_BACKEND_WEB.md` §10). El Encargado PICKUP sigue dependiendo de que el Admin marque `READY_FOR_PICKUP`.
 10. **Horario por universidad** es nuevo (2026-10-23): ventanas antiguas sin universidad sirven a todas. Probar con ambos tipos de datos.
 11. **Test fuera de CI:** varias pruebas del backend que usan MySQL real requieren Docker (no se ejecutan sin él); la cobertura real de concurrencia en handoff/asignación no se pudo confirmar aquí.
 
@@ -383,10 +383,10 @@ Cualquier otra ruta `/delivery/**` o `/operator/**` está **denegada** (`denyAll
 
 | ID | Pregunta | Mi recomendación |
 |---|---|---|
-| D1 | **Login y Turnstile**: ¿cómo entra la app a producción con el captcha activo? | Opción A: WebView solo para resolver el captcha y devolver el token. Opción B: el backend exime a un `X-App-Client` con secreto para cuentas internas (cambio de backend). Opción C: dejar el captcha apagado. Prefiero **B** por UX, pero es un cambio de backend que usted debe aprobar. |
-| D2 | ¿Alcance Admin dentro de la app: solo lectura + asignar + avanzar, o también resolver incidencias (reasignar/perder/desistir/reabrir/reponer stock)? | Empezar con Pedidos (cola, detalle, avanzar) y Asignaciones; incidencias y recuperación en una segunda fase. |
-| D3 | ¿Notificaciones push (FCM) para recordatorios e incidencias? Requiere endpoint de registro de dispositivo en el backend. | Fase 2. En la fase 1: polling de `upcoming-reminders` al abrir la app y pull-to-refresh. |
-| D4 | Cierre del Admin que entrega Delivery personalmente (hallazgo 3). | Aclararlo antes de diseñar la pantalla de detalle Admin. |
+| D1 | **Login y Turnstile**: ¿cómo entra la app a producción con el captcha activo? | **Decidido (2026-10-30): se aprueba la opción B** (el backend exime a un `X-App-Client` con secreto, solo cuentas internas). Requiere el cambio en el backend; mientras el captcha siga apagado (`CAPTCHA_ENABLED=false`, valor por defecto) la app entra sin él. Ver `PLAN_BACKEND_WEB.md` §10. |
+| D2 | ¿Alcance Admin dentro de la app? | **Resuelto en la práctica:** la app ya cubre pedidos, asignaciones, incidencias (reasignar, perder, desistir, causa, reembolso), reabrir y reponer stock. |
+| D3 | ¿Notificaciones push (FCM) para recordatorios e incidencias? | **Decidido (2026-10-30): sí habrá notificaciones.** Hoy hay avisos locales de pedidos nuevos por rol (revisión cada 15 min, ver `PLAN_APP.md` §9). El aviso inmediato requiere FCM y un endpoint de registro de dispositivo en el backend (`PLAN_BACKEND_WEB.md` §10). |
+| D4 | Cierre del Admin que entrega Delivery personalmente (hallazgo 3). | **Decidido (2026-10-30):** el Admin que se asigna a sí mismo un Delivery lo cierra **ingresando el código de entrega y registrando el pago**, con las mismas funciones que el Delivery interno (avanzar, código, cobro con QR o enlace, incidencia). Hoy el backend no le da rutas de cierre al Admin: pendiente en `PLAN_BACKEND_WEB.md` §10; después se agrega la pantalla en la app. |
 | D5 | ¿Un mismo teléfono para varios roles (p. ej. Encargado que también es Admin)? Hoy es un rol por cuenta. | Una sola sesión por dispositivo; cerrar sesión para cambiar de rol. |
 | D6 | Mínimo de Android y distribución (Play Store o APK directo). | API 26+; APK interno firmado al inicio. |
 | D7 | ¿Soporte offline? Hoy toda acción depende del servidor y de CSRF/sesión. | Sin offline en la fase 1; solo mostrar el último listado cacheado en memoria con aviso. |

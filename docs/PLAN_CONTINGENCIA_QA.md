@@ -261,4 +261,4 @@ Durante el piloto y las primeras 48 horas, revisar: errores de checkout por cód
 
 **Orden de trabajo propuesto:** contención → acceso y operación crítica → contratos y sesión → información/evidencias → validación integrada → despliegue gradual.
 
-La decisión de negocio que falta para cerrar M5 es: **¿la validación del código debe bloquearse hasta el inicio de la franja, o quieren permitir entregas anticipadas?**
+**Decisión de M5 (2026-10-30):** la validación del código **no** se bloquea hasta el inicio de la franja. El rol puede ingresar el código en cualquier momento en que el pedido esté en estado de entrega, **salvo cuando el pedido ya tiene una incidencia abierta**. Ver `MAPA_DE_PROCESOS.md` §9, punto 9, y `PLAN_BACKEND_WEB.md` §10.

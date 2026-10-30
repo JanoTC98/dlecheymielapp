@@ -240,6 +240,12 @@ private fun HandoffCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
 
+            state.hasOpenIncident -> Text(
+                "Este pedido tiene una incidencia abierta. La administración la resuelve (reasigna, reembolsa o la da por perdida); " +
+                    "mientras tanto no se puede registrar la entrega.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
             state.closesWithoutCode -> {
                 Text("Cuando el cliente reciba el pedido, márquelo como entregado.", style = MaterialTheme.typography.bodyMedium)
                 state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }

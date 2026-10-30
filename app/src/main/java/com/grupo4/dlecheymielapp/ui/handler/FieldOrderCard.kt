@@ -238,6 +238,13 @@ private fun HandoffArea(order: CardOrder, card: CardState, callbacks: CardCallba
 
         order.status.isTerminal -> Unit
 
+        // A reported incident holds the delivery until the Administrator decides. The card only knows how many incidents the order
+        // has, not which are open, so the open ones are checked in the order screen, where the code can still be entered.
+        order.status == order.handoffStatus && order.incidentCount > 0 -> Text(
+            "Este pedido tiene una incidencia. Ábralo para ver su estado: mientras esté abierta no se registra la entrega.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         order.status == order.handoffStatus && closesWithoutCode -> Button(
             onClick = { callbacks.askComplete(order.id) }, enabled = !card.busy, shape = RoundedCornerShape(50),
             modifier = Modifier.fillMaxWidth().height(48.dp),
