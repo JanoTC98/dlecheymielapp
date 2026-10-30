@@ -2,7 +2,7 @@
 
 - **Origen:** `QA_HALLAZGOS.md` (QA del 2026-10-29) y `PLAN_CONTINGENCIA_QA.md` (revisión con especialista).
 - **Alcance:** solo la app `dlecheymielapp`. El backend y la web están en `PLAN_BACKEND_WEB.md`.
-- **Estado del código:** la carpeta local no tiene Git. Antes de empezar, crear un repositorio o una línea base reproducible (ver §6).
+- **Estado del código:** la carpeta ya tiene Git (línea base creada, ver §7). La alineación con la API nueva del backend está en el §9.
 
 ## 1. Resumen
 
@@ -182,3 +182,40 @@ Para ADMIN, DELIVERY_HANDLER (recojo), DELIVERY_HANDLER (entrega en persona), DE
 - [ ] M1 pasa la prueba de restauración y migración.
 - [x] B1 queda verificado en el APK.
 - [ ] Un turno piloto termina sin pedidos invisibles ni avances accidentales.
+
+## 9. Alineación con la API nueva (2026-10-30)
+
+La app se desarrolló contra la versión anterior que corre en el servidor de pruebas. La versión nueva (`develop` = `main` del repo principal, contrato en `docs/api/openapi.yaml` y reglas en `docs/development/REGLAS_INCIDENCIAS_Y_REEMBOLSOS.md`) cambió sobre todo las incidencias de pedidos pagados. Se auditó el contrato contra los modelos y llamadas de la app y se adaptó la app. **No se cambió ningún dominio**: `local.properties` queda como estaba (servidor de pruebas) y el release sin `local.properties` sigue cayendo en `https://dlecheymiel.pe/`; confirmar el destino al generar cualquier APK.
+
+### Qué cambió en el contrato y cómo lo cubre la app
+
+| Cambio de la API nueva | En la app |
+|---|---|
+| Incidencia con `cause` (`NEGOCIO`, `CLIENTE`, `POR_DETERMINAR`) y `escalationLevel` (0 a 3) | Modelos `IncidentCause`, `AdminIncident.cause/escalationLevel`; el detalle muestra la causa y las marcas **Vencida** (24 h) y **Reembolso recomendado** (72 h). La cola muestra la misma marca. |
+| `PATCH …/incidents/{id}/cause` (nota obligatoria, máx. 500) | Botón **Fijar quién falló** con diálogo, solo en pedidos pagados (igual que la web). |
+| `POST …/incidents/{id}/refund` y `POST …/orders/{id}/refund-lost-charge` | Botón **Reembolsar total** (solo causa negocio y cobro vigente) y **Reembolsar cobro tras la pérdida** en pedidos perdidos con pago aprobado; avisan de la comisión si la venta fue antes de hoy. |
+| Pedido pagado: sin "Dar por perdido" salvo causa cliente; una sola reprogramación; a los 7 días solo reembolso | `incidentRules(...)` (misma tabla que `incidentRules.ts` de la web) decide qué botones se ofrecen; el servidor lo vuelve a exigir. |
+| `deadlineAt` ausente cuando el pedido nunca se pierde | Ya se mostraba solo si venía; sin cambio. |
+| Estado de incidencia `RESOLVED_REFUNDED` | En los dos enums de la app (antes habría salido como "Otro estado"). |
+| Avisos de la campana `INCIDENT_OVERDUE`, `REFUND_SUGGESTED`, `INCIDENT_REMINDER`, `CHARGE_AFTER_LOST` | Títulos propios en la pantalla de avisos. |
+| `customerPhone` en el detalle del pedido (WhatsApp con el cliente) | Botón **Contactar al cliente por WhatsApp** con incidencia abierta, también en recojo. |
+| Códigos nuevos (`LOSS_NOT_ALLOWED_PAID_ORDER`, `RESCHEDULE_LIMIT_REACHED`, `RESCHEDULE_WINDOW_CLOSED`, `INCIDENT_CAUSE_REQUIRED`, `REFUND_*`, `NOTHING_TO_REFUND`, `PAYMENT_NOT_SETTLED`, …) | Mensajes en español en `toAdminMessage()`; los que indican que el pedido cambió recargan el detalle. |
+| Campos que el contrato declara opcionales en `HandlerWork` (`pickup.*`, `recipient.*`, `customerName`) | Ahora tienen valor por defecto: un pedido histórico con nulos ya no rompe la lectura. |
+
+Compatibilidad con el servidor viejo: todo campo nuevo tiene valor por defecto y los endpoints nuevos solo se llaman al pulsar su botón, así que la app sigue funcionando contra la versión anterior (sin causa ni reembolso, como hoy).
+
+Sin cambios necesarios (verificados contra el contrato): login/sesión/CSRF, Encargado (perfil, grupos, pedidos, entrega), Delivery, Operador, asignaciones y destino del Delivery, enlace de pago, recordatorios. El captcha sigue apagado por defecto en el backend (`CAPTCHA_ENABLED=false`); si se enciende en producción, la decisión D1 de `MAPA_DE_PROCESOS.md` pasa a ser bloqueante.
+
+### Notificaciones de pedidos nuevos por rol
+
+- Un trabajo periódico del sistema (`JobScheduler`, cada 15 minutos, el mínimo de Android) lee la cola del rol y avisa de lo que no estaba en la revisión anterior. Se activa al iniciar sesión y se cancela, junto con lo ya avisado, al cerrarla.
+- Qué avisa cada rol: **Admin**, pedidos nuevos (`CONFIRMED`) y avisos de incidencia sin leer; **Encargado de recojo**, grupos o pedidos agregados a un grupo asignado; **Encargado de entrega en persona**, **Delivery** y **Operador**, pedidos nuevos en su cola.
+- La primera revisión de un usuario solo registra lo que ya hay (no avisa de toda la cola). No se guardan datos de clientes, solo claves de pedidos, y el archivo está fuera de los respaldos.
+- Android 13+ pide el permiso de notificaciones al iniciar sesión. El interruptor es `ORDER_ALERTS_ENABLED` en `app/build.gradle.kts`.
+- Límite conocido: **no es push en tiempo real**. El aviso puede tardar hasta 15 minutos y algunos fabricantes (Xiaomi, por ejemplo) retrasan más los trabajos en segundo plano si la app tiene ahorro de batería. Aviso inmediato requiere FCM y un endpoint de registro de dispositivo en el backend (decisión D3 de `MAPA_DE_PROCESOS.md`). Son 4 consultas por hora por usuario; no cambia el análisis de M3, pero conviene tenerlo presente al cerrarlo.
+
+### Qué falta (no se hizo en esta ronda)
+
+- Probar contra la API nueva levantada en local o en el servidor de pruebas cuando se actualice (se dejó fuera a pedido): causa, reembolso, reembolso tras pérdida, WhatsApp y las notificaciones en un celular real.
+- Verificar el APK release firmado (solo se compiló sin firma; el lint offline no se pudo correr por falta de caché de dependencias).
+- Los pendientes de las secciones anteriores que dependen del backend (M3, N1, N2, foto de incidencias) siguen igual.
