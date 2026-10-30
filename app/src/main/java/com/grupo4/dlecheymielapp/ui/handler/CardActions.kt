@@ -9,6 +9,7 @@ import com.grupo4.dlecheymielapp.ui.common.toActionMessage
 import com.grupo4.dlecheymielapp.ui.common.toHandoffMessage
 import com.grupo4.dlecheymielapp.ui.common.toIncidentMessage
 import com.grupo4.dlecheymielapp.ui.common.toPaymentLinkMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -141,10 +142,17 @@ class CardActions(
     private fun edit(id: Long, change: (CardState) -> CardState) =
         _state.update { it.copy(cards = it.cards + (id to change(it.card(id)))) }
 
-    /** Releases the card only after the list has been reloaded when [reload] is set. */
+    /** Releases the card only after the list has been reloaded when [reload] is set; a reload that fails never keeps it locked. */
     private suspend fun settle(id: Long, reload: Boolean) {
-        if (reload) onChanged()
-        edit(id) { it.copy(busy = false) }
+        try {
+            if (reload) onChanged()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The list reports its own load error; the card only has to become usable again.
+        } finally {
+            edit(id) { it.copy(busy = false) }
+        }
     }
 
     override fun onCode(id: Long, value: String) =

@@ -18,6 +18,7 @@ import com.grupo4.dlecheymielapp.ui.common.toGenericMessage
 import com.grupo4.dlecheymielapp.ui.common.toHandoffMessage
 import com.grupo4.dlecheymielapp.ui.common.toIncidentMessage
 import com.grupo4.dlecheymielapp.ui.common.toPaymentLinkMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -116,6 +117,8 @@ class OrderDetailViewModel(
                     providerPhone = if (it.providerPhone.isEmpty()) provider?.phone.orEmpty() else it.providerPhone,
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleAuth(e)
             _state.update { it.copy(loading = false, loadError = e.toGenericMessage()) }
@@ -139,6 +142,8 @@ class OrderDetailViewModel(
                     "Pedido entregado."
                 }
                 _state.update { it.copy(code = "", handoffSuccess = message) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 handleAuth(e)
                 _state.update { it.copy(handoffError = e.toHandoffMessage()) }
@@ -171,6 +176,8 @@ class OrderDetailViewModel(
             try {
                 gateway.advance(orderId, expected)
                 _state.update { it.copy(actionMessage = "El pedido pasó a ${step.first.label}.") }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 handleAuth(e)
                 _state.update { it.copy(actionError = e.toActionMessage()) }
@@ -196,6 +203,8 @@ class OrderDetailViewModel(
             try {
                 gateway.complete(orderId)
                 _state.update { it.copy(actionMessage = "Pedido entregado.") }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 handleAuth(e)
                 _state.update { it.copy(actionError = e.toHandoffMessage()) }
@@ -224,8 +233,10 @@ class OrderDetailViewModel(
         _state.update { it.copy(actionBusy = true, actionError = null, providerSaved = false) }
         viewModelScope.launch {
             try {
-                gateway.saveProvider(orderId, Provider(current.providerName, current.providerPhone))
+                gateway.saveProvider(orderId, Provider(current.providerName, current.providerPhone.trim()))
                 _state.update { it.copy(actionBusy = false, providerSaved = true) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 handleAuth(e)
                 _state.update { it.copy(actionBusy = false, actionError = e.toActionMessage()) }
@@ -250,6 +261,8 @@ class OrderDetailViewModel(
                 gateway.reportIncident(orderId, text)
                 _state.update { it.copy(incidentBusy = false, incidentDialogOpen = false, incidentText = "", incidentSaved = true) }
                 load()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 handleAuth(e)
                 _state.update { it.copy(incidentBusy = false, incidentError = e.toIncidentMessage()) }
@@ -264,6 +277,8 @@ class OrderDetailViewModel(
             try {
                 val url = gateway.paymentLink(orderId)
                 _state.update { it.copy(linkBusy = false, paymentUrl = url) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 handleAuth(e)
                 _state.update { it.copy(linkBusy = false, linkError = e.toPaymentLinkMessage()) }

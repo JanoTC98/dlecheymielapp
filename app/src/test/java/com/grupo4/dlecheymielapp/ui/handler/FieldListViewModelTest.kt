@@ -69,6 +69,33 @@ class FieldListViewModelTest {
     }
 
     @Test
+    fun aSecondCardRestartingTheReloadDoesNotUnlockTheFirstCardEarly() = runTest(dispatcher) {
+        val gates = mapOf(1L to CompletableDeferred<Unit>(), 2L to CompletableDeferred<Unit>())
+        val advancing = object : FieldGateway by UnusedGateway {
+            override val capabilities = FieldCapabilities(canAdvance = true)
+            override suspend fun advance(id: Long, expected: com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus) { gates.getValue(id).await() }
+        }
+        val reloads = mutableListOf<CompletableDeferred<Unit>>()
+        var loads = 0
+        val vm = FieldListViewModel(advancing, {
+            if (loads++ > 0) CompletableDeferred<Unit>().also { reloads += it }.await()
+            listOf(order(1), order(2))
+        }, { emptyList() }, {}, now = { 0L })
+
+        vm.cardActions.advance(1, com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus.CONFIRMED, "DLM-1")
+        vm.cardActions.advance(2, com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus.CONFIRMED, "DLM-2")
+        gates.getValue(1L).complete(Unit)
+        // Card 2's reload restarts the list load and cancels card 1's: card 1 must wait for the load that replaced it.
+        gates.getValue(2L).complete(Unit)
+        assertTrue("no reload has finished yet, so card 1 must stay locked", vm.cardActions.state.value.card(1).busy)
+        assertTrue(vm.cardActions.state.value.card(2).busy)
+
+        reloads.last().complete(Unit)
+        assertFalse(vm.cardActions.state.value.card(1).busy)
+        assertFalse(vm.cardActions.state.value.card(2).busy)
+    }
+
+    @Test
     fun overlappingRefreshesStartOnlyOneLoad() = runTest(dispatcher) {
         var calls = 0
         val gate = CompletableDeferred<Unit>()

@@ -23,6 +23,7 @@ import org.junit.Test
 
 private class FormGateway(override val capabilities: FieldCapabilities = FieldCapabilities(canRegisterProvider = true)) : FieldGateway {
     var saveProviderCalls = 0
+    var savedProvider: Provider? = null
     var reportIncidentCalls = 0
     var incidentError: Exception? = null
 
@@ -30,7 +31,7 @@ private class FormGateway(override val capabilities: FieldCapabilities = FieldCa
     override suspend fun incidents(id: Long): List<FieldIncident> = emptyList()
     override suspend fun handoff(id: Long, code: String) = error("not used")
     override suspend fun paymentLink(id: Long): String = error("not used")
-    override suspend fun saveProvider(id: Long, provider: Provider) { saveProviderCalls++ }
+    override suspend fun saveProvider(id: Long, provider: Provider) { saveProviderCalls++; savedProvider = provider }
     override suspend fun reportIncident(id: Long, description: String): FieldIncident {
         reportIncidentCalls++
         incidentError?.let { throw it }
@@ -87,6 +88,7 @@ class OrderDetailFormsTest {
         vm.submitIncident()
 
         assertEquals(1, gateway.saveProviderCalls)
+        assertEquals("the phone that passed validation is the one sent", "+51987654321", gateway.savedProvider?.phone)
         assertTrue(vm.state.value.providerSaved)
         assertNull(vm.state.value.providerPhoneError)
         assertEquals(1, gateway.reportIncidentCalls)

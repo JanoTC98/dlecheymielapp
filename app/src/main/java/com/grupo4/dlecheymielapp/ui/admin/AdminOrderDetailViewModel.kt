@@ -12,6 +12,7 @@ import com.grupo4.dlecheymielapp.ui.common.toAdminMessage
 import com.grupo4.dlecheymielapp.ui.handler.leavesStateUnknown
 import com.grupo4.dlecheymielapp.ui.handler.needsAdvanceConfirmation
 import com.grupo4.dlecheymielapp.ui.common.toGenericMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,6 +81,8 @@ class AdminOrderDetailViewModel(
             try {
                 val order = repository.order(id)
                 _state.update { it.copy(loading = false, order = order) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 fail(e) { text -> _state.update { it.copy(loading = false, error = text) } }
             }
@@ -133,6 +136,8 @@ class AdminOrderDetailViewModel(
             try {
                 val slots = repository.rescheduleSlots(id).filter { it.remainingCapacity > 0 }
                 updateSlot { it.copy(loading = false, slots = slots) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 fail(e) { text -> updateSlot { it.copy(loading = false, error = text) } }
             }
@@ -193,6 +198,8 @@ class AdminOrderDetailViewModel(
             try {
                 val url = repository.paymentLink(id)
                 _state.update { it.copy(busy = false, paymentUrl = url) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 fail(e) { text -> _state.update { it.copy(busy = false, actionError = text) } }
             }
@@ -233,6 +240,8 @@ class AdminOrderDetailViewModel(
                 }
                 val currentName = candidates.firstOrNull { it.id == current }?.displayName
                 updateAssign { it.copy(loading = false, choices = choices, current = currentName ?: current?.let { "Encargado #$it" }) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 fail(e) { text -> updateAssign { it.copy(loading = false, error = text) } }
             }
@@ -258,6 +267,8 @@ class AdminOrderDetailViewModel(
                     else -> "Sin destino (entrega el Administrador)"
                 }
                 updateAssign { it.copy(loading = false, choices = choices, current = currentLabel) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 fail(e) { text -> updateAssign { it.copy(loading = false, error = text) } }
             }
@@ -295,6 +306,8 @@ class AdminOrderDetailViewModel(
                 block()
                 val order = repository.order(id)
                 _state.update { it.copy(busy = false, order = order, dialog = null, message = success, noteText = "") }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 fail(e) { text ->
                     _state.update { it.copy(actionError = text, dialog = if (it.dialog is AdminDialog.Slot || it.dialog is AdminDialog.ConfirmAdvance) null else it.dialog) }
@@ -310,6 +323,8 @@ class AdminOrderDetailViewModel(
         try {
             val order = repository.order(id)
             _state.update { it.copy(order = order) }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             fail(e) { text -> _state.update { it.copy(actionError = text) } }
         }

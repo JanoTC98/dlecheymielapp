@@ -57,6 +57,18 @@ class CardActionsTest {
     private fun TestScope.actions(gateway: FieldGateway) = CardActions(this, gateway, { unauthorized++ }, { changes++; reloadGate?.await() })
 
     @Test
+    fun aReloadThatThrowsStillUnlocksTheCard() = runTest {
+        val gateway = FakeGateway(FieldCapabilities(canAdvance = true))
+        val actions = CardActions(this, gateway, { unauthorized++ }, { throw IllegalStateException("reload failed") })
+
+        actions.advance(3, OrderStatus.CONFIRMED, "DLM-3")
+        advanceUntilIdle()
+
+        assertEquals(1, gateway.advanceCalls)
+        assertFalse("a failed reload must not leave the card locked", actions.state.value.card(3).busy)
+    }
+
+    @Test
     fun validCodeDeliversClearsTheFieldAndReloadsTheList() = runTest {
         val gateway = FakeGateway()
         val actions = actions(gateway)

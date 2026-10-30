@@ -51,13 +51,26 @@ class HandlerListViewModel(
     val state: StateFlow<HandlerListState> = _state.asStateFlow()
 
     /** Validate codes, report incidents… straight from the cards; the list reloads quietly afterwards. */
-    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true).join() })
+    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { reloadAndWait() })
 
     private var job: Job? = null
 
     init { load(initial = true) }
 
     fun refresh() { load(initial = false) }
+
+    /**
+     * Restarts the list load and waits until a load started after this call has finished. Another card may restart the load
+     * meanwhile and cancel the one awaited here (a cancelled job's join returns at once), so follow the replacement.
+     */
+    private suspend fun reloadAndWait() {
+        var running = load(initial = false, quiet = true, restart = true)
+        running.join()
+        while (job !== running) {
+            running = job ?: return
+            running.join()
+        }
+    }
 
     /**
      * A refresh while a load runs is dropped: the running load already reads the server. A card action restarts it, so its result
@@ -103,13 +116,26 @@ class FieldListViewModel(
     private val _state = MutableStateFlow(HandlerListState())
     val state: StateFlow<HandlerListState> = _state.asStateFlow()
 
-    val cardActions = CardActions(viewModelScope, gateway, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true).join() })
+    val cardActions = CardActions(viewModelScope, gateway, onUnauthorized, onChanged = { reloadAndWait() })
 
     private var job: Job? = null
 
     init { load(initial = true) }
 
     fun refresh() { load(initial = false) }
+
+    /**
+     * Restarts the list load and waits until a load started after this call has finished. Another card may restart the load
+     * meanwhile and cancel the one awaited here (a cancelled job's join returns at once), so follow the replacement.
+     */
+    private suspend fun reloadAndWait() {
+        var running = load(initial = false, quiet = true, restart = true)
+        running.join()
+        while (job !== running) {
+            running = job ?: return
+            running.join()
+        }
+    }
 
     /** Same rule as [HandlerListViewModel]: one load at a time; a card action restarts it and waits for it. */
     private fun load(initial: Boolean, quiet: Boolean = false, restart: Boolean = false): Job {
