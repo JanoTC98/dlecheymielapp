@@ -44,10 +44,10 @@ Routes: **P** = parent (Opus) inline; **H** = Haiku writer; **S** = Sonnet verif
 | ID | Specs | Route | Depends | Risk | Status | Commit |
 |---|---|---|---|---|---|---|
 | T0 | S0 | P | — | none | done (baseline 69 tests green; branch `fix/app-contingencia-qa`; CodeGraph indexed) | `1a35d45` (user) |
-| T1 | S1, S2, S3, S8 | H (unit "lists"), isolated worktree | T0 | none | in progress | — |
+| T1 | S1, S2, S3, S8 | H (unit "lists"), isolated worktree | T0 | none | done (unit tests green; device check pending in T8) | `7667bc7` |
 | T2 | S5 | H (unit "advance"), isolated worktree | T0 | item 4 (async/concurrency) → S verifier | in progress | — |
 | T3 | S4 | H, after T1 | T1 | none (flag off) | pending | — |
-| T4 | S6, S9, S10 | H (unit "session & forms"), isolated worktree | T0 | item 2 (backup/credentials) → S verifier | in progress | — |
+| T4 | S6, S9, S10 | H (unit "session & forms"), isolated worktree | T0 | item 2 (backup/credentials) → S verifier | done, verifier pending (joint with T2) | `fc131f5`, `dc601d9` |
 | T5 | S11 | H (unit "detail info") | T2 (shares detail screens) | none | pending | — |
 | T6 | S12 | H | T5 | none | pending | — |
 | T7 | S13 | H, then S on the release APK | T1-T6 | item 5 (release build) → S verifier | pending | — |
@@ -71,3 +71,7 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
 - **L4:** Engram mirror **pending**: `mem_save` was rejected by a hook (`host session ... already ended`). Resync to topic `odd/app-contingencia-qa/tasks` when Engram accepts writes.
 - **L5:** T0 done. The user created the repo (`main` @ `1a35d45 base`). Branch `fix/app-contingencia-qa` exists. Baseline: `bash gradlew testDebugUnitTest` gives 69 tests, 0 failures. User allows Codex/OpenCode for OpenAI validations and said **never use ASTRA**.
 - **L6:** routing change. B2 (S8) moved to T1, because the logout lives in the shared `BrandHeader` (`ui/common/BrandComponents.kt:68`) and only `AdminOrdersScreen` receives `onLogout` from `AdminHost`. T1, T2 and T4 share files (`AdminAssignmentsScreens.kt`, `AdminListViewModels.kt`, `FieldOrderCard.kt`, `OrderDetailScreen.kt`), so each writer runs in an isolated worktree and the parent merges sequentially.
+- **L7:** T1 and T4 were cherry-picked without conflicts onto `fix/app-contingencia-qa`. `bash gradlew testDebugUnitTest assembleDebug` gives 85 tests, 0 failures, and the build succeeds.
+  - T1 deviations: one commit; list error states say "Actualizar"; `PickupScreens` GroupOrders was already scrollable; `HandlerListViewModel`, `AdminOrdersViewModel` and `AdminNotificationsViewModel` have no tests, because their repositories are final classes.
+  - T4: the blank-incident guard, keeping the draft and the 2000-character cap already existed; tests pin them.
+  - The worktrees live under `.claude/worktrees`, which is excluded in `.git/info/exclude`.
