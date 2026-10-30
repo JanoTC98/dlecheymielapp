@@ -15,6 +15,8 @@ val localProperties = Properties().apply {
 }
 val debugApiUrl = localProperties.getProperty("dleche.debugApiUrl") ?: "http://10.0.2.2:8080/"
 val releaseApiUrl = localProperties.getProperty("dleche.releaseApiUrl") ?: "https://dlecheymiel.pe/"
+// Foreground polling of the operational queues stays off until the backend closes M3. Enable locally with dleche.queuePolling=true.
+val queuePollingEnabled = localProperties.getProperty("dleche.queuePolling")?.toBoolean() ?: false
 
 android {
     namespace = "com.grupo4.dlecheymielapp"
@@ -44,6 +46,8 @@ android {
             // The local backend runs with CAPTCHA_ENABLED=false.
             buildConfigField("boolean", "CAPTCHA_ENABLED", "false")
             buildConfigField("String", "TURNSTILE_SITE_KEY", "\"\"")
+            buildConfigField("boolean", "QUEUE_POLLING_ENABLED", "$queuePollingEnabled")
+            buildConfigField("int", "QUEUE_POLLING_SECONDS", "60")
         }
         release {
             // Published API. Do not point a release build at it until the server runs the current backend.
@@ -51,6 +55,8 @@ android {
             // Must mirror CAPTCHA_ENABLED on the server; when true the login needs the Turnstile WebView (not built yet).
             buildConfigField("boolean", "CAPTCHA_ENABLED", "false")
             buildConfigField("String", "TURNSTILE_SITE_KEY", "\"\"")
+            buildConfigField("boolean", "QUEUE_POLLING_ENABLED", "$queuePollingEnabled")
+            buildConfigField("int", "QUEUE_POLLING_SECONDS", "60")
             optimization {
                 enable = false
             }
