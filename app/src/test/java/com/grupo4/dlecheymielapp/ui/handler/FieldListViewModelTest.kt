@@ -49,6 +49,26 @@ class FieldListViewModelTest {
     }
 
     @Test
+    fun aCardStaysLockedUntilTheListReloadAfterItsAdvanceFinishes() = runTest(dispatcher) {
+        val advancing = object : FieldGateway by UnusedGateway {
+            override val capabilities = FieldCapabilities(canAdvance = true)
+            var advanceCalls = 0
+            override suspend fun advance(id: Long, expected: com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus) { advanceCalls++ }
+        }
+        var loads = 0
+        val reloadGate = CompletableDeferred<Unit>()
+        val vm = FieldListViewModel(advancing, { if (loads++ > 0) reloadGate.await(); listOf(order(3)) }, { emptyList() }, {}, now = { 0L })
+
+        vm.cardActions.advance(3, com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus.CONFIRMED, "DLM-3")
+        assertTrue("the list is still reloading after the advance, so the card must stay locked", vm.cardActions.state.value.card(3).busy)
+        vm.cardActions.advance(3, com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus.CONFIRMED, "DLM-3")
+        assertEquals(1, advancing.advanceCalls)
+
+        reloadGate.complete(Unit)
+        assertFalse(vm.cardActions.state.value.card(3).busy)
+    }
+
+    @Test
     fun overlappingRefreshesStartOnlyOneLoad() = runTest(dispatcher) {
         var calls = 0
         val gate = CompletableDeferred<Unit>()

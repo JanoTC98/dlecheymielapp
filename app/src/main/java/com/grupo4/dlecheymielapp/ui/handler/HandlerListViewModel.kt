@@ -51,20 +51,23 @@ class HandlerListViewModel(
     val state: StateFlow<HandlerListState> = _state.asStateFlow()
 
     /** Validate codes, report incidents… straight from the cards; the list reloads quietly afterwards. */
-    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true) })
+    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true).join() })
 
     private var job: Job? = null
 
     init { load(initial = true) }
 
-    fun refresh() = load(initial = false)
+    fun refresh() { load(initial = false) }
 
-    /** A refresh while a load runs is dropped: the running load already reads the server. A card action restarts it, so its result is shown. */
-    private fun load(initial: Boolean, quiet: Boolean = false, restart: Boolean = false) {
-        if (job?.isActive == true && !restart) return
+    /**
+     * A refresh while a load runs is dropped: the running load already reads the server. A card action restarts it, so its result
+     * is shown. Returns the running load so a card action can wait for its reload before unlocking the card.
+     */
+    private fun load(initial: Boolean, quiet: Boolean = false, restart: Boolean = false): Job {
+        job?.takeIf { it.isActive && !restart }?.let { return it }
         job?.cancel()
         _state.update { it.copy(loading = initial && it.profile == null, refreshing = !initial && !quiet, error = null) }
-        job = viewModelScope.launch {
+        return viewModelScope.launch {
             try {
                 val profile = _state.value.profile ?: repository.profile()
                 val pickup = profile.handlerType == HandlerType.PICKUP
@@ -85,7 +88,7 @@ class HandlerListViewModel(
                 // The previous list, profile and filters stay on screen; the screen shows that they are older.
                 _state.update { it.copy(loading = false, refreshing = false, error = e.toGenericMessage(), stale = true) }
             }
-        }
+        }.also { job = it }
     }
 }
 
@@ -100,20 +103,20 @@ class FieldListViewModel(
     private val _state = MutableStateFlow(HandlerListState())
     val state: StateFlow<HandlerListState> = _state.asStateFlow()
 
-    val cardActions = CardActions(viewModelScope, gateway, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true) })
+    val cardActions = CardActions(viewModelScope, gateway, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true).join() })
 
     private var job: Job? = null
 
     init { load(initial = true) }
 
-    fun refresh() = load(initial = false)
+    fun refresh() { load(initial = false) }
 
-    /** Same rule as [HandlerListViewModel]: one load at a time; a card action restarts it. */
-    private fun load(initial: Boolean, quiet: Boolean = false, restart: Boolean = false) {
-        if (job?.isActive == true && !restart) return
+    /** Same rule as [HandlerListViewModel]: one load at a time; a card action restarts it and waits for it. */
+    private fun load(initial: Boolean, quiet: Boolean = false, restart: Boolean = false): Job {
+        job?.takeIf { it.isActive && !restart }?.let { return it }
         job?.cancel()
         _state.update { it.copy(loading = initial, refreshing = !initial && !quiet, error = null) }
-        job = viewModelScope.launch {
+        return viewModelScope.launch {
             try {
                 val orders = loadOrders().sortedForField()
                 val upcoming = runCatching { reminders() }.getOrDefault(emptyList())
@@ -125,7 +128,7 @@ class FieldListViewModel(
                 if (e is ApiException && e.status == 401) onUnauthorized()
                 _state.update { it.copy(loading = false, refreshing = false, error = e.toGenericMessage(), stale = true) }
             }
-        }
+        }.also { job = it }
     }
 }
 
