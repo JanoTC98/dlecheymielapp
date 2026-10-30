@@ -35,7 +35,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.grupo4.dlecheymielapp.R
 import com.grupo4.dlecheymielapp.data.admin.PickupGroupDetail
 import com.grupo4.dlecheymielapp.data.admin.PickupGroupOrder
 import com.grupo4.dlecheymielapp.data.admin.PickupGroupSummary
@@ -103,7 +106,11 @@ private fun GroupCard(group: PickupGroupSummary, onClick: () -> Unit) {
     SoftCard(onClick = onClick) {
         Text(group.pickupPoint.name ?: "Recojo", style = MaterialTheme.typography.titleMedium)
         Text("${group.schedule.timeRange}${group.university.name?.let { " · $it" } ?: ""}", style = MaterialTheme.typography.bodyMedium)
-        LabeledRow("Pedidos:", "${group.orderCount} (${group.deliveredCount} entregados, ${group.pendingCount} pendientes)")
+        LabeledRow(
+            "Pedidos:",
+            "${group.orderCount} (${pluralStringResource(R.plurals.delivered_orders_count, group.deliveredCount, group.deliveredCount)}, " +
+                "${pluralStringResource(R.plurals.pending_orders_count, group.pendingCount, group.pendingCount)})",
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val handler = group.assignedHandler
             if (handler != null) Pill(handler.displayName, Brand.Mist, Brand.Ink)
@@ -166,7 +173,7 @@ fun AdminGroupDetailScreen(
                 nextStep(group)?.let { step ->
                     SoftCard {
                         Text("Avanzar el grupo", style = MaterialTheme.typography.titleMedium)
-                        Text("Mueve a la vez todos los pedidos que estén en ${step.first.label}.", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.group_advance_all, step.first.label), style = MaterialTheme.typography.bodyMedium)
                         Button(onClick = onAdvance, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text(if (state.busy) "Guardando…" else step.third) }
                     }
                 }

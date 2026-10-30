@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">D\'Leche y Miel</string>
+
+    <plurals name="delivered_orders_count">
+        <item quantity="one">%d entregado</item>
+        <item quantity="other">%d entregados</item>
+    </plurals>
+    <plurals name="pending_orders_count">
+        <item quantity="one">%d pendiente</item>
+        <item quantity="other">%d pendientes</item>
+    </plurals>
+    <plurals name="pickup_pending_of_orders">
+        <item quantity="one">%1$d de %2$d pedido pendiente</item>
+        <item quantity="other">%1$d de %2$d pedidos pendientes</item>
+    </plurals>
+
+    <string name="group_advance_all">Mueve a la vez todos los pedidos que están %1$s.</string>
 </resources>

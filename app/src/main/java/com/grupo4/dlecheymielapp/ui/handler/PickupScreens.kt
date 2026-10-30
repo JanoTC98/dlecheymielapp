@@ -36,9 +36,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.grupo4.dlecheymielapp.R
 import com.grupo4.dlecheymielapp.data.fulfillment.PickupGroupWork
 import com.grupo4.dlecheymielapp.data.fulfillment.PickupGroupWorkDetail
 import com.grupo4.dlecheymielapp.ui.common.BrandHeader
@@ -130,7 +132,10 @@ private fun GroupCard(group: PickupGroupWork, onClick: () -> Unit) {
     SoftCard(onClick = onClick) {
         GroupBar(group.schedule.timeRange, group.pickupPoint.name, listOfNotNull(group.university.name, group.pickupPoint.locationText).joinToString(" · "))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${group.pendingCount} de ${group.orderCount} pedidos pendientes", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(
+                pluralStringResource(R.plurals.pickup_pending_of_orders, group.orderCount, group.pendingCount, group.orderCount),
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+            )
             if (group.pendingCount == 0) Pill("Todo entregado", Color(0xFFDDF3E4), Color(0xFF14532D))
             if (group.incidentCount > 0) Pill("${group.incidentCount} incid.", Brand.ErrorContainer, Brand.Error)
         }
@@ -191,7 +196,7 @@ private fun GroupOrders(
                 GroupBar(group.schedule.timeRange, group.pickupPoint.name, listOfNotNull(group.university.name, group.pickupPoint.locationText).joinToString(" · "))
                 Text(formatSlotDate(group.schedule.slotDate), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val pending = group.orders.count { !it.delivered && !it.status.isTerminal }
-                Text("$pending de ${group.orders.size} pedidos pendientes", style = MaterialTheme.typography.titleMedium)
+                Text(pluralStringResource(R.plurals.pickup_pending_of_orders, group.orders.size, pending, group.orders.size), style = MaterialTheme.typography.titleMedium)
             }
         }
         if (!group.hasReadyOrders) {
