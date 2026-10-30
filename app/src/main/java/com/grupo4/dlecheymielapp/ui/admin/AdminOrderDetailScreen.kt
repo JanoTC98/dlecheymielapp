@@ -46,8 +46,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.grupo4.dlecheymielapp.data.admin.AdminIncident
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderDetail
+import com.grupo4.dlecheymielapp.data.admin.AdminOrderItem
 import com.grupo4.dlecheymielapp.data.admin.IncidentType
 import com.grupo4.dlecheymielapp.data.admin.RescheduleSlot
+import com.grupo4.dlecheymielapp.data.admin.preparationLines
 import com.grupo4.dlecheymielapp.data.admin.priceBreakdown
 import com.grupo4.dlecheymielapp.data.admin.refundStatusLabel
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
@@ -163,17 +165,26 @@ private fun SummaryCard(order: AdminOrderDetail) {
         Text("Compra", style = MaterialTheme.typography.titleMedium)
         val breakdown = order.priceBreakdown()
         if (breakdown != null) {
-            // The prices the order was sold with: no fee is derived from the tariff or from subtractions.
-            breakdown.items.forEach { LabeledRow("${it.quantity} ×", "${it.name} · ${formatMoney(it.amount)}") }
+            // The prices the order was sold with: no fee is derived from the tariff or from subtractions. Each row is drawn
+            // from its own item, in line order, so its preparation details sit under it; the amount is that item's subtotal.
+            order.items.sortedBy { it.lineNumber }.forEach { PurchaseLine(it) }
             breakdown.deliveryFee?.let { LabeledRow("Costo de entrega:", formatMoney(it)) }
             LabeledRow("Total:", formatMoney(breakdown.total ?: order.amount))
         } else {
-            order.items.forEach { LabeledRow("${it.quantity} ×", "${it.name} · ${formatMoney(it.subtotal)}") }
+            order.items.forEach { PurchaseLine(it) }
             LabeledRow("Total:", formatMoney(order.amount))
         }
         LabeledRow("Pago:", order.paymentStatus.label + if (order.isPayOnDelivery) " (contra entrega)" else "")
         order.refundStatus?.let { LabeledRow("Reembolso:", refundStatusLabel(it)) }
         LabeledRow("Confirmado:", formatTimestamp(order.consolidatedAt))
+    }
+}
+
+@Composable
+private fun PurchaseLine(item: AdminOrderItem) {
+    LabeledRow("${item.quantity} ×", "${item.name} · ${formatMoney(item.subtotal)}")
+    item.preparationLines().forEach {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp))
     }
 }
 
