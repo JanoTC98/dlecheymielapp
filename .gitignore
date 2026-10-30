@@ -1,15 +1,70 @@
+# ===== Gradle =====
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+.gradletasknamecache
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+*.ap_
+*.aab
+*.apk
+*.dex
+.cxx/
+.externalNativeBuild/
+captures/
+release-mappings/
+
+# ===== Kotlin =====
+.kotlin/
+*.class
+
+# ===== Android Studio / IntelliJ =====
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/deploymentTargetSelector.xml
+.idea/deviceManager.xml
+.idea/.name
+.idea/misc.xml.bak
+out/
+*.ipr
+*.iws
+.apt_generated/
+.apt_generated_tests/
+
+# ===== Local configuration (machine-specific, secrets) =====
 local.properties
+*.jks
+*.keystore
+keystore.properties
+google-services.json
+secrets.properties
+.env
+.env.*
+!.env.example
+
+# ===== Crash / profiling dumps =====
+*.hprof
+*.log
+replay_pid*
+
+# ===== AI tooling and local indexes =====
+.claude/
+.codegraph/
+
+# ===== OS / editor =====
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.fleet/
