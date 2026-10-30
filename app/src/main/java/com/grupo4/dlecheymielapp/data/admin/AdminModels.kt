@@ -4,6 +4,7 @@ import com.grupo4.dlecheymielapp.data.fulfillment.FieldSchedule
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 enum class AssignmentKind { HANDLER, DELIVERY_EMPLOYEE, OPERATOR_QUEUE, UNKNOWN }
 
@@ -108,7 +109,51 @@ data class AdminSnapshot(
 }
 
 @Serializable
-data class AdminOrderItem(val lineNumber: Int = 0, val name: String = "", val quantity: Int = 0, val subtotal: Double = 0.0)
+data class AdminOrderItem(
+    val lineNumber: Int = 0,
+    val name: String = "",
+    val quantity: Int = 0,
+    val subtotal: Double = 0.0,
+    /** Captured at checkout; null for orders created before the backend stored it. */
+    val commercialSnapshot: AdminCommercialSnapshot? = null,
+)
+
+/** A PACK or COMBO component, as the backend captured it (CartDtos.ComponentSnapshot). */
+@Serializable
+data class AdminCommercialComponent(
+    val productName: String? = null,
+    val requestedQuantity: Int = 0,
+    /** The backend's readable customization text, "Grupo: opción; ..."; empty when the component is not customized. */
+    val summary: String? = null,
+)
+
+/** The commercial identity of an order line (CommercialSnapshot.java). Only the fields the kitchen needs are read. */
+@Serializable
+data class AdminCommercialSnapshot(
+    val itemType: String? = null,
+    val presentationName: String? = null,
+    val components: List<AdminCommercialComponent> = emptyList(),
+    /** Holds group and option ids only, so it is never shown; read as a tree so any shape is tolerated. */
+    val configuration: JsonElement? = null,
+)
+
+/**
+ * What the kitchen needs to prepare this line. Empty for a plain product, so it shows exactly as before. Components are listed
+ * only for PACK and COMBO lines; a customized component shows the backend's own "Grupo: opción" text, one line per group.
+ */
+fun AdminOrderItem.preparationLines(): List<String> {
+    val snapshot = commercialSnapshot ?: return emptyList()
+    val lines = mutableListOf<String>()
+    snapshot.presentationName?.takeIf { it.isNotBlank() }?.let { lines += "Presentación: $it" }
+    if (snapshot.itemType == "PACK" || snapshot.itemType == "COMBO") {
+        snapshot.components.forEach { component ->
+            val name = component.productName?.takeIf { it.isNotBlank() } ?: return@forEach
+            lines += "${component.requestedQuantity} × $name"
+            component.summary.orEmpty().split("; ").filter { it.isNotBlank() }.forEach { lines += it }
+        }
+    }
+    return lines
+}
 
 @Serializable
 data class AdminMoney(val amount: Double = 0.0, val currency: String? = null)
