@@ -11,6 +11,8 @@ import com.grupo4.dlecheymielapp.data.fulfillment.HandlerOrderWork
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.data.fulfillment.PaymentStatus
 import com.grupo4.dlecheymielapp.data.fulfillment.Provider
+import com.grupo4.dlecheymielapp.ui.common.PROVIDER_PHONE_FORMAT_MESSAGE
+import com.grupo4.dlecheymielapp.ui.common.isValidProviderPhone
 import com.grupo4.dlecheymielapp.ui.common.toActionMessage
 import com.grupo4.dlecheymielapp.ui.common.toGenericMessage
 import com.grupo4.dlecheymielapp.ui.common.toHandoffMessage
@@ -57,6 +59,8 @@ data class OrderDetailState(
     val providerName: String = "",
     val providerPhone: String = "",
     val providerSaved: Boolean = false,
+    /** Shown under the phone field; set when a save is refused, cleared when the phone is edited. */
+    val providerPhoneError: String? = null,
 ) {
     /** Pickup orders are handed over when ready; every other modality while on its way. */
     val handoffStatus: OrderStatus
@@ -184,11 +188,17 @@ class OrderDetailViewModel(
 
     fun onProviderName(value: String) = _state.update { it.copy(providerName = value.take(120), providerSaved = false) }
 
-    fun onProviderPhone(value: String) = _state.update { it.copy(providerPhone = value.take(40), providerSaved = false) }
+    fun onProviderPhone(value: String) =
+        _state.update { it.copy(providerPhone = value.take(40), providerSaved = false, providerPhoneError = null) }
 
     fun saveProvider() {
         val current = _state.value
         if (current.actionBusy || !current.providerReady) return
+        // An invalid phone never reaches the repository: the field explains the format instead.
+        if (!isValidProviderPhone(current.providerPhone)) {
+            _state.update { it.copy(providerPhoneError = PROVIDER_PHONE_FORMAT_MESSAGE, providerSaved = false) }
+            return
+        }
         _state.update { it.copy(actionBusy = true, actionError = null, providerSaved = false) }
         viewModelScope.launch {
             try {

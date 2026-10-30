@@ -135,10 +135,12 @@ private fun ProviderCard(state: OrderDetailState, onName: (String) -> Unit, onPh
             value = state.providerName, onValueChange = onName, label = { Text("Nombre del proveedor") }, singleLine = true,
             enabled = !state.actionBusy, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(),
         )
+        val phoneError = state.providerPhoneError
         OutlinedTextField(
             value = state.providerPhone, onValueChange = onPhone, label = { Text("Teléfono del proveedor") }, singleLine = true,
-            enabled = !state.actionBusy, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(),
+            enabled = !state.actionBusy, isError = phoneError != null, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone),
+            supportingText = { phoneError?.let { Text(it) } },
         )
         if (state.providerSaved) SuccessText("Proveedor guardado.")
         OutlinedButton(onClick = onSave, enabled = state.providerReady && !state.actionBusy, modifier = Modifier.fillMaxWidth()) { Text("Guardar proveedor") }
@@ -305,12 +307,13 @@ private fun IncidentDialog(state: OrderDetailState, onClose: () -> Unit, onTextC
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Cuente qué pasó (cliente ausente, dirección incorrecta, no contesta…).", style = MaterialTheme.typography.bodyMedium)
+                val counter = "${state.incidentText.length}/$MAX_INCIDENT_LENGTH"
                 OutlinedTextField(
                     value = state.incidentText,
                     onValueChange = onTextChange,
                     enabled = !state.incidentBusy,
                     minLines = 4,
-                    supportingText = { Text("${state.incidentText.length}/$MAX_INCIDENT_LENGTH") },
+                    supportingText = { Text(if (state.incidentText.isBlank()) "Describa la incidencia · $counter" else counter) },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 state.incidentError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
