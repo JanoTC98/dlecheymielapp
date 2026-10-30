@@ -45,9 +45,9 @@ Routes: **P** = parent (Opus) inline; **H** = Haiku writer; **S** = Sonnet verif
 |---|---|---|---|---|---|---|
 | T0 | S0 | P | — | none | done (baseline 69 tests green; branch `fix/app-contingencia-qa`; CodeGraph indexed) | `1a35d45` (user) |
 | T1 | S1, S2, S3, S8 | H (unit "lists"), isolated worktree | T0 | none | done (unit tests green; device check pending in T8) | `7667bc7` |
-| T2 | S5 | H (unit "advance"), isolated worktree, plus a parent gap fix | T0 | item 4 (async/concurrency) → S verifier | done, verification running (Sonnet and Codex) | `59c08fd`, `5689de7` |
+| T2 | S5 | H (unit "advance"), isolated worktree, plus a parent gap fix | T0 | item 4 (async/concurrency) → S verifier | done; verified (Sonnet: B1 fixed on recheck); native review approved | `59c08fd`, `5689de7`, `4d81ce8` |
 | T3 | S4 | H, after T1 | T1 | none (flag off) | pending | — |
-| T4 | S6, S9, S10 | H (unit "session & forms"), isolated worktree | T0 | item 2 (backup/credentials) → S verifier | done, verifier pending (joint with T2) | `fc131f5`, `dc601d9` |
+| T4 | S6, S9, S10 | H (unit "session & forms"), isolated worktree | T0 | item 2 (backup/credentials) → S verifier | done; verified (S6, S9, S10 pass); native review approved | `fc131f5`, `dc601d9`, `4d81ce8` (A1) |
 | T5 | S11 | H (unit "detail info") | T2 (shares detail screens) | none | pending | — |
 | T6 | S12 | H | T5 | none | pending | — |
 | T7 | S13 | H, then S on the release APK | T1-T6 | item 5 (release build) → S verifier | pending | — |
@@ -94,3 +94,9 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
     - Codex finding 1: `settle()` uses try/catch/finally. Test `aReloadThatThrowsStillUnlocksTheCard`.
     - Codex finding 2: `CancellationException` is rethrown in the `OrderDetailViewModel` and `AdminOrderDetailViewModel` catches (7 in each).
   - Suite: 101 tests, 0 failures; build OK. One recheck limited to B1 requested from the same verifier.
+- **L12:** Sonnet recheck limited to B1 gave PASS on `4d81ce8`, with 103 tests in the scratch clone (101 plus 2 probes). Scratch removed.
+- **L13:** native RDD review of committed range `1a35d45..dae1204`.
+  - `.atl/` was excluded locally first, because the gentle-ai registry cache showed up as untracked.
+  - Consent `granted` by the user. Lenses: risk, resilience, reliability. All three gave **no findings**; state `approved`.
+  - `acknowledge-approved` returned `gentle-ai.review-acknowledged/v1`, authority `burned` (lineage `review-34f3b3c0444a1461`). The reviewed boundary advances to `dae1204`.
+  - Delivery (push/PR) remains the user's decision.
