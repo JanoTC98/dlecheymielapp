@@ -51,6 +51,16 @@ class AdminRepository(private val api: AdminApi, private val json: Json) {
     suspend fun desist(orderId: Long, incidentId: Long, refund: Boolean) =
         apiCall(json) { api.desist(orderId, incidentId, DesistBody(refund)) }
 
+    /** Settles who failed (`NEGOCIO` or `CLIENTE`); the note is required and audited by the server. */
+    suspend fun setCause(orderId: Long, incidentId: Long, cause: IncidentCause, note: String) =
+        apiCall(json) { api.setCause(orderId, incidentId, CauseBody(cause.name, note.trim())) }
+
+    /** Cancels an order the business did not deliver and starts a full refund. Never automatic. */
+    suspend fun refund(orderId: Long, incidentId: Long) = apiCall(json) { api.refund(orderId, incidentId) }
+
+    /** Refunds a charge that was approved after the order was lost. */
+    suspend fun refundLostCharge(orderId: Long) = apiCall(json) { api.refundLostCharge(orderId) }
+
     suspend fun restoreStock(orderId: Long) = apiCall(json) { api.restoreStock(orderId) }
 
     suspend fun reopen(orderId: Long, slot: RescheduleSlot) =

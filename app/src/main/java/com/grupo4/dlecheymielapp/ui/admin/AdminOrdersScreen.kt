@@ -35,7 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderSummary
+import com.grupo4.dlecheymielapp.data.admin.AdminPaymentStatus
 import com.grupo4.dlecheymielapp.data.admin.AssignmentKind
+import com.grupo4.dlecheymielapp.data.admin.IncidentCause
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.ui.common.BrandHeader
@@ -132,6 +134,17 @@ private fun SearchField(code: String, onSearch: (String) -> Unit) {
     )
 }
 
+/** Same marks as the web queue: a paid order nobody resolved is "Vencida" after 24 h and "Reembolso recomendado" after 72 h (business fault). */
+internal fun incidentPillText(order: AdminOrderSummary): String {
+    val paid = order.paymentStatus == AdminPaymentStatus.approved
+    val level = order.incidentEscalationLevel
+    return when {
+        paid && order.incidentCause == IncidentCause.NEGOCIO && level >= 2 -> "Reembolso recomendado"
+        paid && order.incidentCause != IncidentCause.CLIENTE && level >= 1 -> "Incidencia vencida"
+        else -> "Incidencia abierta"
+    }
+}
+
 @Composable
 private fun OrderCard(order: AdminOrderSummary, onClick: () -> Unit) {
     SoftCard(onClick = onClick) {
@@ -144,7 +157,7 @@ private fun OrderCard(order: AdminOrderSummary, onClick: () -> Unit) {
         LabeledRow("Modalidad:", order.fulfillmentMode.label)
         LabeledRow("Total:", formatMoney(order.amount))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (order.hasOpenIncident) Pill("Incidencia abierta", Brand.ErrorContainer, Brand.Error)
+            if (order.hasOpenIncident) Pill(incidentPillText(order), Brand.ErrorContainer, Brand.Error)
             else if (order.hasIncident) Pill("Incidencia resuelta", Brand.Mist, Brand.Violet)
             assignmentPill(order)?.let { (text, assigned) ->
                 Pill(text, if (assigned) Brand.Mist else androidx.compose.ui.graphics.Color(0xFFFFF1CC), if (assigned) Brand.Ink else androidx.compose.ui.graphics.Color(0xFF6B4A00))

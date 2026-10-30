@@ -55,6 +55,15 @@ interface AdminApi {
     @POST("api/v1/admin/orders/{id}/incidents/{incidentId}/desist")
     suspend fun desist(@Path("id") id: Long, @Path("incidentId") incidentId: Long, @Body body: DesistBody): DesistResult
 
+    @PATCH("api/v1/admin/orders/{id}/incidents/{incidentId}/cause")
+    suspend fun setCause(@Path("id") id: Long, @Path("incidentId") incidentId: Long, @Body body: CauseBody): CauseResult
+
+    @POST("api/v1/admin/orders/{id}/incidents/{incidentId}/refund")
+    suspend fun refund(@Path("id") id: Long, @Path("incidentId") incidentId: Long): RefundResult
+
+    @POST("api/v1/admin/orders/{id}/refund-lost-charge")
+    suspend fun refundLostCharge(@Path("id") id: Long): RefundResult
+
     @POST("api/v1/admin/orders/{id}/restore-stock")
     suspend fun restoreStock(@Path("id") id: Long): RestoreResult
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.grupo4.dlecheymielapp.core.network.ApiException
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderDetail
 import com.grupo4.dlecheymielapp.data.admin.AdminRepository
+import com.grupo4.dlecheymielapp.data.admin.IncidentCause
 import com.grupo4.dlecheymielapp.data.admin.RescheduleSlot
 import com.grupo4.dlecheymielapp.data.admin.excludingSlotOf
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
@@ -40,6 +41,13 @@ sealed interface AdminDialog {
     data class ConfirmUncollectible(val incidentId: Long) : AdminDialog
     data class Desist(val incidentId: Long) : AdminDialog
     data object ConfirmRestoreStock : AdminDialog
+
+    /** Settle who failed; the note (1 to 500 characters) is required and audited by the server. */
+    data class Cause(val incidentId: Long, val cause: IncidentCause = IncidentCause.NEGOCIO, val note: String = "") : AdminDialog
+
+    /** Full refund of an order the business did not deliver; `lateFee` warns that the sale was before today. */
+    data class ConfirmRefund(val incidentId: Long, val lateFee: Boolean) : AdminDialog
+    data class ConfirmRefundLostCharge(val lateFee: Boolean) : AdminDialog
 
     /** The next step is En camino or terminal: the Admin confirms the order code and target status first. */
     data class ConfirmAdvance(val label: String, val target: OrderStatus) : AdminDialog
@@ -193,6 +201,53 @@ class AdminOrderDetailViewModel(
 
     fun confirmRestoreStock() = act("Stock repuesto.") { repository.restoreStock(id) }
 
+    // ---- Causa y reembolso (pedidos pagados) ----
+
+    fun askCause(incidentId: Long, current: IncidentCause) {
+        val start = if (current == IncidentCause.CLIENTE) IncidentCause.CLIENTE else IncidentCause.NEGOCIO
+        showDialog(AdminDialog.Cause(incidentId, start))
+    }
+
+    fun onCauseChoice(cause: IncidentCause) = updateCause { it.copy(cause = cause) }
+
+    fun onCauseNote(text: String) = updateCause { it.copy(note = text.take(CAUSE_NOTE_MAX)) }
+
+    private fun updateCause(transform: (AdminDialog.Cause) -> AdminDialog.Cause) = _state.update {
+        val dialog = it.dialog as? AdminDialog.Cause ?: return@update it
+        it.copy(dialog = transform(dialog))
+    }
+
+    fun submitCause() {
+        val d = _state.value.dialog as? AdminDialog.Cause ?: return
+        if (d.cause != IncidentCause.NEGOCIO && d.cause != IncidentCause.CLIENTE) return
+        if (d.note.isBlank()) return
+        val message = if (d.cause == IncidentCause.CLIENTE) "Causa fijada: falló el cliente. Corren de nuevo sus 24 horas." else "Causa fijada: falló el negocio."
+        act(message) { repository.setCause(id, d.incidentId, d.cause, d.note) }
+    }
+
+    /** The commission of the payment provider is lost when the sale was before today, so the dialog says so first. */
+    fun askRefund(incidentId: Long) {
+        val order = _state.value.order ?: return
+        showDialog(AdminDialog.ConfirmRefund(incidentId, lateFee = soldBeforeToday(order)))
+    }
+
+    fun confirmRefund() {
+        val d = _state.value.dialog as? AdminDialog.ConfirmRefund ?: return
+        act("El pedido se canceló y el reembolso total está en curso.") { repository.refund(id, d.incidentId) }
+    }
+
+    fun askRefundLostCharge() {
+        val order = _state.value.order ?: return
+        showDialog(AdminDialog.ConfirmRefundLostCharge(lateFee = soldBeforeToday(order)))
+    }
+
+    fun confirmRefundLostCharge() = act("El pedido se canceló y el reembolso total está en curso.") { repository.refundLostCharge(id) }
+
+    private fun soldBeforeToday(order: AdminOrderDetail): Boolean {
+        val soldOn = order.consolidatedAt.take(10)
+        return soldOn.length == 10 && soldOn < todayInLima()
+    }
+
     // ---- Enlace de pago ----
 
     fun requestPaymentLink() {
@@ -317,7 +372,7 @@ class AdminOrderDetailViewModel(
                     _state.update { it.copy(actionError = text, dialog = if (it.dialog is AdminDialog.Slot || it.dialog is AdminDialog.ConfirmAdvance) null else it.dialog) }
                 }
                 // The order moved under us or its outcome is unknown: show its real state before the actions unlock.
-                if (e.leavesStateUnknown() || (e is ApiException && e.code in setOf("INCIDENT_NOT_OPEN", "ORDER_ALREADY_TERMINAL"))) reloadOrder()
+                if (e.leavesStateUnknown() || (e is ApiException && e.code in RELOAD_CODES)) reloadOrder()
                 _state.update { it.copy(busy = false) }
             }
         }
@@ -338,4 +393,18 @@ class AdminOrderDetailViewModel(
         if (e is ApiException && e.status == 401) onUnauthorized()
         apply(if (e is ApiException) e.toAdminMessage() else e.toGenericMessage())
     }
+
+    private companion object {
+        const val CAUSE_NOTE_MAX = 500
+
+        /** Answers that mean the order is no longer what the screen shows, so it is reloaded before the actions unlock. */
+        val RELOAD_CODES = setOf(
+            "INCIDENT_NOT_OPEN", "ORDER_ALREADY_TERMINAL", "REFUND_ALREADY_EXISTS", "PAYMENT_NOT_SETTLED",
+            "RESCHEDULE_LIMIT_REACHED", "RESCHEDULE_WINDOW_CLOSED", "LOSS_NOT_ALLOWED_PAID_ORDER", "INCIDENT_CAUSE_REQUIRED",
+        )
+    }
 }
+
+/** Today in Lima as yyyy-MM-dd: the day of the sale decides whether a refund costs the card commission. */
+internal fun todayInLima(): String =
+    java.time.LocalDate.now(java.time.ZoneId.of("America/Lima")).toString()

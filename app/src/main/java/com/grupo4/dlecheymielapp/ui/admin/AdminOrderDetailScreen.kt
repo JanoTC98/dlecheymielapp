@@ -47,8 +47,13 @@ import androidx.compose.ui.unit.dp
 import com.grupo4.dlecheymielapp.data.admin.AdminIncident
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderDetail
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderItem
+import com.grupo4.dlecheymielapp.data.admin.IncidentCause
+import com.grupo4.dlecheymielapp.data.admin.IncidentRules
 import com.grupo4.dlecheymielapp.data.admin.IncidentType
+import com.grupo4.dlecheymielapp.data.admin.RescheduleBlock
 import com.grupo4.dlecheymielapp.data.admin.RescheduleSlot
+import com.grupo4.dlecheymielapp.data.admin.incidentRules
+import com.grupo4.dlecheymielapp.ui.common.whatsappUrl
 import com.grupo4.dlecheymielapp.data.admin.preparationLines
 import com.grupo4.dlecheymielapp.data.admin.priceBreakdown
 import com.grupo4.dlecheymielapp.data.admin.refundStatusLabel
@@ -84,6 +89,14 @@ class AdminOrderActions(
     val onConfirmDesist: (Boolean) -> Unit,
     val onAskRestoreStock: () -> Unit,
     val onConfirmRestoreStock: () -> Unit,
+    val onAskCause: (Long, IncidentCause) -> Unit,
+    val onCauseChoice: (IncidentCause) -> Unit,
+    val onCauseNote: (String) -> Unit,
+    val onSubmitCause: () -> Unit,
+    val onAskRefund: (Long) -> Unit,
+    val onConfirmRefund: () -> Unit,
+    val onAskRefundLostCharge: () -> Unit,
+    val onConfirmRefundLostCharge: () -> Unit,
     val onRequestPaymentLink: () -> Unit,
     val onHidePaymentLink: () -> Unit,
     val onOpenAssign: () -> Unit,
@@ -218,6 +231,10 @@ private fun LostActions(order: AdminOrderDetail, busy: Boolean, actions: AdminOr
     if (order.isPayOnDelivery && !order.stockRestored) {
         OutlinedButton(onClick = actions.onReopen, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reabrir en otra franja") }
     }
+    // A charge approved after the loss: the server answers 409 if it was paid before, and the dialog explains it.
+    if (order.isPaid && order.refundStatus == null) {
+        OutlinedButton(onClick = actions.onAskRefundLostCharge, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reembolsar cobro tras la pérdida") }
+    }
     if (order.stockRestoreAvailable) {
         OutlinedButton(onClick = actions.onAskRestoreStock, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reponer stock") }
     }
@@ -262,21 +279,39 @@ private fun AssignmentCard(order: AdminOrderDetail, busy: Boolean, actions: Admi
 @Composable
 private fun IncidentsCard(order: AdminOrderDetail, busy: Boolean, actions: AdminOrderActions) {
     if (order.incidents.isEmpty()) return
+    val context = LocalContext.current
+    val whatsapp = whatsappUrl(order.customerPhone ?: order.fulfillmentSnapshot.run { deliveryPhone ?: recipientPhone })
     SoftCard {
         Text("Incidencias", style = MaterialTheme.typography.titleMedium)
         order.incidents.forEach { incident ->
             IncidentBlock(incident, order, busy, actions)
+        }
+        // Rescheduling is agreed with the customer by WhatsApp, outside the app.
+        if (whatsapp != null && order.openIncidents.isNotEmpty()) {
+            OutlinedButton(
+                onClick = { context.startSafely(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(whatsapp))) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Contactar al cliente por WhatsApp") }
         }
     }
 }
 
 @Composable
 private fun IncidentBlock(incident: AdminIncident, order: AdminOrderDetail, busy: Boolean, actions: AdminOrderActions) {
+    // Cause and reminders matter only while a non-IMPAGO incident is open; the cause drives what money moves are allowed.
+    val rules = if (incident.status.isOpen && incident.type != IncidentType.IMPAGO) incidentRules(incident, order.incidents, order.isPaid) else null
     Surface(shape = RoundedCornerShape(14.dp), color = if (incident.status.isOpen) Brand.ErrorContainer else Brand.Mist.copy(alpha = 0.4f), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Pill(incident.status.label, if (incident.status.isOpen) Brand.Error else Brand.Violet, Color.White)
                 Text(incident.type.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (rules != null && order.isPaid) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Pill(rules.cause.label, Brand.Violet, Color.White)
+                    if (rules.refundRecommended) Pill("Reembolso recomendado", Brand.Error, Color.White)
+                    else if (rules.overdue) Pill("Vencida", Brand.Error, Color.White)
+                }
             }
             if (incident.description.isNotBlank()) Text(incident.description, style = MaterialTheme.typography.bodyMedium)
             Text(
@@ -286,22 +321,48 @@ private fun IncidentBlock(incident: AdminIncident, order: AdminOrderDetail, busy
             if (incident.status.isOpen && incident.deadlineAt != null) {
                 Text("Se da por perdido solo el ${formatTimestamp(incident.deadlineAt)} si nadie decide.", style = MaterialTheme.typography.bodyMedium)
             }
-            if (incident.status.isOpen) IncidentButtons(incident, order, busy, actions)
+            if (incident.status.isOpen) IncidentButtons(incident, rules, order, busy, actions)
         }
     }
 }
 
 @Composable
-private fun IncidentButtons(incident: AdminIncident, order: AdminOrderDetail, busy: Boolean, actions: AdminOrderActions) {
-    if (incident.type == IncidentType.IMPAGO) {
+private fun IncidentButtons(incident: AdminIncident, rules: IncidentRules?, order: AdminOrderDetail, busy: Boolean, actions: AdminOrderActions) {
+    if (incident.type == IncidentType.IMPAGO || rules == null) {
         OutlinedButton(onClick = { actions.onAskUncollectible(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Dar por no cobrable") }
         return
     }
-    Button(onClick = { actions.onReassign(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reasignar a otra franja") }
+    // A paid order the business failed ends in a refund, never in a write-off; the buttons follow the same table as the web.
+    if (rules.canRefund) {
+        if (rules.refundRecommended) {
+            Button(onClick = { actions.onAskRefund(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reembolsar total") }
+        } else {
+            OutlinedButton(onClick = { actions.onAskRefund(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reembolsar total") }
+        }
+    }
+    if (rules.rescheduleBlocked) {
+        Text(
+            when (rules.rescheduleBlockedBy) {
+                RescheduleBlock.LIMIT -> "Este pedido pagado ya se reprogramó una vez: solo queda reembolsarlo."
+                else -> "Pasaron más de 7 días desde la franja: ya no se reprograma, solo se reembolsa."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    } else {
+        Button(onClick = { actions.onReassign(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Reasignar a otra franja") }
+    }
+    // The cause only moves money on a paid order, so it is only settled there.
+    if (order.isPaid) {
+        OutlinedButton(onClick = { actions.onAskCause(incident.id, rules.cause) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Fijar quién falló") }
+    }
     if (order.isPayOnDelivery) {
         OutlinedButton(onClick = { actions.onAskDesist(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("El cliente desistió") }
     }
-    OutlinedButton(onClick = { actions.onAskLost(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Dar por perdido") }
+    if (rules.lossBlocked) {
+        Text("Un pedido pagado solo se da por perdido cuando falló el cliente.", style = MaterialTheme.typography.bodyMedium)
+    } else {
+        OutlinedButton(onClick = { actions.onAskLost(incident.id) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Dar por perdido") }
+    }
 }
 
 @Composable
@@ -389,6 +450,49 @@ private fun Dialogs(dialog: AdminDialog, state: AdminOrderDetailState, actions: 
             onConfirm = actions.onConfirmUncollectible, onDismiss = actions.onCloseDialog,
         )
 
+        is AdminDialog.Cause -> AlertDialog(
+            onDismissRequest = actions.onCloseDialog,
+            title = { Text("¿Quién falló?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(IncidentCause.NEGOCIO, IncidentCause.CLIENTE).forEach { option ->
+                        Row(
+                            Modifier.fillMaxWidth().selectable(selected = dialog.cause == option, role = Role.RadioButton, onClick = { actions.onCauseChoice(option) }),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = dialog.cause == option, onClick = null)
+                            Text(option.label, modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 6.dp))
+                        }
+                    }
+                    Text(
+                        if (dialog.cause == IncidentCause.NEGOCIO) "Si falló el negocio, el pedido pagado solo se reprograma una vez o se reembolsa."
+                        else "Si falló el cliente, se puede reprogramar y, si no responde, se pierde sin reembolso. Corren de nuevo sus 24 horas.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    OutlinedTextField(
+                        value = dialog.note, onValueChange = actions.onCauseNote, minLines = 2,
+                        label = { Text("Nota (obligatoria, queda auditada)") }, modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("${dialog.note.length}/500", style = MaterialTheme.typography.labelLarge)
+                    state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = { TextButton(onClick = actions.onSubmitCause, enabled = !busy && dialog.note.isNotBlank()) { Text(if (busy) "Guardando…" else "Guardar") } },
+            dismissButton = { TextButton(onClick = actions.onCloseDialog, enabled = !busy) { Text("Cancelar") } },
+        )
+
+        is AdminDialog.ConfirmRefund -> ConfirmDialog(
+            title = "Reembolsar total", busy = busy, confirmLabel = "Reembolsar", error = state.actionError,
+            text = refundText(dialog.lateFee, lost = false),
+            onConfirm = actions.onConfirmRefund, onDismiss = actions.onCloseDialog,
+        )
+
+        is AdminDialog.ConfirmRefundLostCharge -> ConfirmDialog(
+            title = "Reembolsar cobro tras la pérdida", busy = busy, confirmLabel = "Reembolsar", error = state.actionError,
+            text = refundText(dialog.lateFee, lost = true),
+            onConfirm = actions.onConfirmRefundLostCharge, onDismiss = actions.onCloseDialog,
+        )
+
         AdminDialog.ConfirmRestoreStock -> ConfirmDialog(
             title = "Reponer stock", busy = busy, confirmLabel = "Reponer", error = state.actionError,
             text = "Se devuelven las unidades al inventario. Solo se puede hacer una vez y el pedido ya no podrá reabrirse.",
@@ -439,6 +543,12 @@ private fun Dialogs(dialog: AdminDialog, state: AdminOrderDetailState, actions: 
         )
     }
 }
+
+private fun refundText(lateFee: Boolean, lost: Boolean): String = buildString {
+    append("El pedido se cancela, se avisa al cliente y se inicia el reembolso total. ")
+    append(if (lost) "Solo se devuelve el cobro recibido después de la pérdida. " else "El stock no cambia: lo decide con «Reponer stock». ")
+    if (lateFee) append("La venta fue antes de hoy: el negocio pierde la comisión de la pasarela.")
+}.trim()
 
 @Composable
 private fun ChoiceRow(choice: AssignChoice, busy: Boolean, onClick: () -> Unit) {

@@ -77,7 +77,9 @@ private val detail = AdminOrderDetail(
 private fun Framed(content: @Composable () -> Unit) = DLecheTheme { Surface(Modifier.fillMaxSize()) { content() } }
 
 private val noActions = AdminOrderActions(
-    {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+    {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+    { _, _ -> }, {}, {}, {}, {}, {}, {}, {},
+    {}, {}, {}, {}, {},
 )
 
 @Preview(name = "Admin: pedidos", showBackground = true, widthDp = 360, heightDp = 780)

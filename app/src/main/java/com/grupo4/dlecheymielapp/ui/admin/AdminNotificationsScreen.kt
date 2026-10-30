@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.grupo4.dlecheymielapp.data.admin.IncidentNotification
+import com.grupo4.dlecheymielapp.data.admin.title
 import com.grupo4.dlecheymielapp.ui.common.BrandHeader
 import com.grupo4.dlecheymielapp.ui.common.FreshnessNotice
 import com.grupo4.dlecheymielapp.ui.common.Pill
@@ -77,10 +78,11 @@ private fun NotificationCard(item: IncidentNotification, onClick: () -> Unit) {
             Text(item.orderPublicCode ?: "Pedido #${item.orderId}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             if (!item.read) Pill("Nueva", Brand.Error, androidx.compose.ui.graphics.Color.White)
         }
+        Text(item.title(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
         if (item.summary.isNotBlank()) Text(item.summary, style = MaterialTheme.typography.bodyLarge)
         Text(
             listOfNotNull(
-                if (item.kind == "INCIDENT_AUTO_LOST") "Perdido automáticamente" else item.reporterRole?.label,
+                item.reporterRole?.label,
                 item.reporterName, formatTimestamp(item.recordedAt),
             ).filter { it.isNotBlank() }.joinToString(" · "),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,

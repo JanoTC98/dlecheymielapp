@@ -31,7 +31,16 @@ enum class AdminIncidentStatus(val label: String, val isOpen: Boolean = false) {
     RESOLVED_PAID("Cobrada"),
     RESOLVED_UNCOLLECTIBLE("Dada por no cobrable"),
     RESOLVED_DESISTED("El cliente desistió"),
+    RESOLVED_REFUNDED("Reembolsada"),
     UNKNOWN("Otro estado"),
+}
+
+/** Who failed in an incident. The system sets it when it opens one; the Admin can settle it to NEGOCIO or CLIENTE. */
+enum class IncidentCause(val label: String) {
+    NEGOCIO("Falló el negocio"),
+    CLIENTE("Falló el cliente"),
+    POR_DETERMINAR("Causa por determinar"),
+    UNKNOWN("Causa por determinar"),
 }
 
 enum class AdminPaymentStatus(val label: String) {
@@ -61,6 +70,10 @@ data class AdminOrderSummary(
     val hasIncident: Boolean = false,
     val incidentStatus: String? = null,
     val incidentDeadlineAt: String? = null,
+    /** Most recent OPEN incident that is not an IMPAGO; null without one. */
+    val incidentCause: IncidentCause? = null,
+    /** 0 none, 1 after 24 h (overdue), 2 after 72 h (refund recommended), 3 after 7 days. */
+    val incidentEscalationLevel: Int = 0,
     val assignmentKind: AssignmentKind? = null,
     val assignedUserId: Long? = null,
     val pickupGroupKey: String? = null,
@@ -81,10 +94,52 @@ data class AdminIncident(
     val description: String = "",
     val status: AdminIncidentStatus = AdminIncidentStatus.UNKNOWN,
     val recordedAt: String = "",
+    /** Present only while OPEN, and absent when the order is never written off (a paid order the business failed). */
     val deadlineAt: String? = null,
+    val cause: IncidentCause = IncidentCause.POR_DETERMINAR,
+    val escalationLevel: Int = 0,
     val resolvedAt: String? = null,
     val resolvedBy: String? = null,
 )
+
+/**
+ * What the rules for paid orders allow for one open incident (docs/development/REGLAS_INCIDENCIAS_Y_REEMBOLSOS.md), the same
+ * decisions the web panel takes in `incidentRules.ts`. The server enforces them too; this only decides which buttons to offer.
+ */
+data class IncidentRules(
+    val cause: IncidentCause,
+    /** A paid order is written off only when the customer failed. */
+    val lossBlocked: Boolean,
+    /** A paid order the business failed is rescheduled once, and only within 7 days of the missed slot. */
+    val rescheduleBlocked: Boolean,
+    val rescheduleBlockedBy: RescheduleBlock?,
+    val canRefund: Boolean,
+    val refundRecommended: Boolean,
+    val overdue: Boolean,
+)
+
+enum class RescheduleBlock { LIMIT, WINDOW }
+
+fun incidentRules(incident: AdminIncident, incidents: List<AdminIncident>, paid: Boolean): IncidentRules {
+    val cause = if (incident.cause == IncidentCause.UNKNOWN) IncidentCause.POR_DETERMINAR else incident.cause
+    val reassignedBefore = incidents.count { it.id != incident.id && it.status == AdminIncidentStatus.RESOLVED_REASSIGNED }
+    // Level 3 is 7 days since the missed slot; the server counts from the end of the slot even when the incident opened later.
+    val windowClosed = paid && cause != IncidentCause.CLIENTE && incident.escalationLevel >= 3
+    val limitReached = paid && cause == IncidentCause.NEGOCIO && reassignedBefore >= 1
+    return IncidentRules(
+        cause = cause,
+        lossBlocked = paid && cause != IncidentCause.CLIENTE,
+        rescheduleBlocked = limitReached || windowClosed,
+        rescheduleBlockedBy = when {
+            limitReached -> RescheduleBlock.LIMIT
+            windowClosed -> RescheduleBlock.WINDOW
+            else -> null
+        },
+        canRefund = paid && cause == IncidentCause.NEGOCIO,
+        refundRecommended = paid && cause == IncidentCause.NEGOCIO && incident.escalationLevel >= 2,
+        overdue = paid && cause != IncidentCause.CLIENTE && incident.escalationLevel >= 1,
+    )
+}
 
 /** Only the fields the app shows; the snapshot carries many more. */
 @Serializable
@@ -230,7 +285,10 @@ data class AdminOrderDetail(
     val paymentTiming: PaymentTiming? = null,
     val stockRestored: Boolean = false,
     val stockRestoreAvailable: Boolean = false,
+    /** The customer's phone, sent only when they accepted WhatsApp coordination at checkout; null otherwise. */
+    val customerPhone: String? = null,
 ) {
+    val isPaid: Boolean get() = paymentStatus == AdminPaymentStatus.approved
     val isPayOnDelivery: Boolean get() = paymentTiming == PaymentTiming.ON_DELIVERY
     val openIncidents: List<AdminIncident> get() = incidents.filter { it.status.isOpen }
 }
@@ -273,6 +331,16 @@ data class DesistResult(val orderId: Long, val refundStarted: Boolean = false)
 data class RestoreResult(val orderId: Long, val restored: Boolean = false)
 
 @Serializable
+data class CauseBody(val cause: String, val note: String)
+
+@Serializable
+data class CauseResult(val incidentId: Long = 0, val cause: IncidentCause = IncidentCause.UNKNOWN, val deadlineAt: String? = null)
+
+/** Answer of `refund` and `refund-lost-charge`: the order is CANCELLED and a full refund was started. */
+@Serializable
+data class RefundResult(val orderId: Long, val refundStarted: Boolean = false)
+
+@Serializable
 data class IncidentNotification(
     val id: Long,
     val kind: String = "",
@@ -285,6 +353,17 @@ data class IncidentNotification(
     val recordedAt: String = "",
     val read: Boolean = false,
 )
+
+/** Bell title for each notification kind the backend sends; an unknown kind is shown as a generic incident. */
+fun IncidentNotification.title(): String = when (kind) {
+    "INCIDENT_REPORTED" -> "Nueva incidencia"
+    "INCIDENT_AUTO_LOST" -> "Pedido dado por perdido"
+    "INCIDENT_OVERDUE" -> "Incidencia vencida (24 h)"
+    "REFUND_SUGGESTED" -> "Reembolso recomendado (72 h)"
+    "INCIDENT_REMINDER" -> "Recordatorio de incidencia"
+    "CHARGE_AFTER_LOST" -> "Cobro recibido de un pedido perdido"
+    else -> "Incidencia"
+}
 
 @Serializable
 data class NotificationPage(val items: List<IncidentNotification>, val page: Int = 0, val size: Int = 20, val totalElements: Long = 0, val totalPages: Int = 0)

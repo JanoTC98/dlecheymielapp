@@ -44,6 +44,7 @@ enum class IncidentStatus(val label: String) {
     RESOLVED_PAID("Cobrada"),
     RESOLVED_UNCOLLECTIBLE("Dada por no cobrable"),
     RESOLVED_DESISTED("El cliente desistió"),
+    RESOLVED_REFUNDED("Reembolsada"),
     UNKNOWN("Otro estado"),
 }
 
@@ -65,10 +66,11 @@ data class PayAtDeliveryInfo(
 data class HandlerProfile(val id: Long, val displayName: String, val handlerType: HandlerType? = null)
 
 @Serializable
-data class Recipient(val name: String, val phone: String, val place: String, val reference: String? = null)
+data class Recipient(val name: String = "", val phone: String = "", val place: String = "", val reference: String? = null)
 
+/** The contract allows null for each field (historical orders carry only some of them), so each one defaults to empty. */
 @Serializable
-data class PickupInfo(val universityName: String, val pickupPointName: String, val locationText: String)
+data class PickupInfo(val universityName: String = "", val pickupPointName: String = "", val locationText: String = "")
 
 @Serializable
 data class HandlerOrderWork(
@@ -80,7 +82,7 @@ data class HandlerOrderWork(
     val pickup: PickupInfo? = null,
     val recipient: Recipient? = null,
     val groupKey: String? = null,
-    val customerName: String,
+    val customerName: String = "",
     val incidentCount: Int = 0,
     val payAtDelivery: PayAtDeliveryInfo? = null,
 )
