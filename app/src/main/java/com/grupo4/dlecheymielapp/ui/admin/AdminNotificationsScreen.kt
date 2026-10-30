@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.grupo4.dlecheymielapp.data.admin.IncidentNotification
+import com.grupo4.dlecheymielapp.ui.common.BrandHeader
+import com.grupo4.dlecheymielapp.ui.common.FreshnessNotice
 import com.grupo4.dlecheymielapp.ui.common.Pill
 import com.grupo4.dlecheymielapp.ui.common.SoftCard
 import com.grupo4.dlecheymielapp.ui.common.formatTimestamp
@@ -34,10 +36,12 @@ fun AdminNotificationsScreen(
     onRefresh: () -> Unit,
     onUnreadOnly: (Boolean) -> Unit,
     onOpen: (IncidentNotification) -> Unit,
+    onLogout: (() -> Unit)? = null,
+    userName: String? = null,
 ) {
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)) {
-            Text("Incidencias", style = MaterialTheme.typography.headlineMedium)
+        BrandHeader("ADMINISTRACIÓN", "Incidencias", userName, onLogout)
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp)) {
             Text(
                 "Reportes del personal de campo. Toque uno para resolverlo en el pedido.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -48,16 +52,16 @@ fun AdminNotificationsScreen(
         }
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.error != null && state.items.isEmpty() -> CenteredMessage(state.error, "Reintentar", onRefresh)
             else -> PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
-                if (state.items.isEmpty()) {
-                    CenteredMessage("No hay incidencias. Deslice hacia abajo para actualizar.")
-                } else {
-                    LazyColumn(
+                when {
+                    state.error != null && state.items.isEmpty() -> CenteredMessage(state.error, "Actualizar", onRefresh)
+                    state.items.isEmpty() -> CenteredMessage("No hay incidencias. Deslice hacia abajo para actualizar.", "Actualizar", onRefresh)
+                    else -> LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
+                        item(key = "freshness") { FreshnessNotice(state.lastUpdated, state.stale) }
                         items(state.items, key = { it.id }) { NotificationCard(it) { onOpen(it) } }
                     }
                 }

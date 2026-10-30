@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,6 +39,8 @@ import com.grupo4.dlecheymielapp.ui.common.BrandHeader
 import com.grupo4.dlecheymielapp.ui.common.DayTitle
 import com.grupo4.dlecheymielapp.ui.common.EmptyState
 import com.grupo4.dlecheymielapp.ui.common.ErrorText
+import com.grupo4.dlecheymielapp.ui.common.FreshnessNotice
+import com.grupo4.dlecheymielapp.ui.common.RefreshButton
 import com.grupo4.dlecheymielapp.ui.common.RemindersCard
 import com.grupo4.dlecheymielapp.ui.common.Stat
 import com.grupo4.dlecheymielapp.ui.common.StatRow
@@ -67,17 +71,19 @@ fun HandlerOrdersScreen(
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 
-            state.error != null && state.orders.isEmpty() -> CenteredMessage(state.error, actionLabel = "Reintentar", onAction = onRefresh)
-
+            // Empty and failed lists sit inside the pull container, scrollable, so the gesture works without any items.
             else -> PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
-                if (state.orders.isEmpty()) {
-                    Column(Modifier.fillMaxSize()) {
+                when {
+                    state.error != null && state.orders.isEmpty() -> CenteredMessage(state.error, actionLabel = "Actualizar", onAction = onRefresh)
+
+                    state.orders.isEmpty() -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         actions.notice?.let { SuccessBanner(it, Modifier.padding(16.dp), onDismiss = callbacks::dismissNotice) }
                         RemindersCard(state.reminders, Modifier.padding(16.dp))
                         EmptyState(emptyText)
+                        RefreshButton(onRefresh)
                     }
-                } else {
-                    OrderBlocks(state, actions, callbacks, onOpenOrder)
+
+                    else -> OrderBlocks(state, actions, callbacks, onOpenOrder)
                 }
             }
         }
@@ -102,6 +108,7 @@ private fun OrderBlocks(state: HandlerListState, actions: CardActionsState, call
     ) {
         actions.notice?.let { notice -> item(key = "notice") { SuccessBanner(notice, onDismiss = callbacks::dismissNotice) } }
         state.error?.let { item(key = "error") { ErrorText(it) } }
+        item(key = "freshness") { FreshnessNotice(state.lastUpdated, state.stale) }
         item(key = "stats") {
             StatRow(
                 listOf(
@@ -134,10 +141,11 @@ private fun OrderBlocks(state: HandlerListState, actions: CardActionsState, call
     }
 }
 
+/** A centered message that scrolls, so it can sit inside a pull-to-refresh container. */
 @Composable
 internal fun CenteredMessage(text: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
     Column(
-        Modifier.fillMaxSize().padding(32.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

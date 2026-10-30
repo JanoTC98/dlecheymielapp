@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,6 +45,8 @@ import com.grupo4.dlecheymielapp.ui.common.BrandHeader
 import com.grupo4.dlecheymielapp.ui.common.DayTitle
 import com.grupo4.dlecheymielapp.ui.common.EmptyState
 import com.grupo4.dlecheymielapp.ui.common.ErrorText
+import com.grupo4.dlecheymielapp.ui.common.FreshnessNotice
+import com.grupo4.dlecheymielapp.ui.common.RefreshButton
 import com.grupo4.dlecheymielapp.ui.common.Pill
 import com.grupo4.dlecheymielapp.ui.common.RemindersCard
 import com.grupo4.dlecheymielapp.ui.common.SoftCard
@@ -60,34 +64,39 @@ fun PickupGroupsScreen(state: HandlerListState, onRefresh: () -> Unit, onOpenGro
         BrandHeader("RECOJO EN PUNTO", "Mis recojos", state.profile?.displayName, onLogout)
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.error != null && state.groups.isEmpty() -> CenteredMessage(state.error, "Reintentar", onRefresh)
             else -> PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
-                if (state.groups.isEmpty()) {
-                    Column(Modifier.fillMaxSize()) {
+                when {
+                    state.error != null && state.groups.isEmpty() -> CenteredMessage(state.error, "Actualizar", onRefresh)
+
+                    state.groups.isEmpty() -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         RemindersCard(state.reminders, Modifier.padding(16.dp))
                         EmptyState("No tiene grupos de recojo asignados por ahora. Deslice hacia abajo para actualizar.")
+                        RefreshButton(onRefresh)
                     }
-                } else {
-                    val byDay = state.groups.groupBy { it.schedule.slotDate }
-                    LazyColumn(
-                        Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        state.error?.let { item { ErrorText(it) } }
-                        item(key = "stats") {
-                            StatRow(
-                                listOf(
-                                    Stat("Grupos", state.groups.size),
-                                    Stat("Pedidos pendientes", state.groups.sumOf { it.pendingCount }),
-                                    Stat("Con incidencia", state.groups.count { it.incidentCount > 0 }),
-                                ),
-                            )
-                        }
-                        if (state.reminders.isNotEmpty()) item(key = "reminders") { RemindersCard(state.reminders) }
-                        byDay.forEach { (day, groups) ->
-                            item(key = "day-$day") { DayTitle(day) }
-                            items(groups, key = { it.groupKey }) { GroupCard(it) { onOpenGroup(it.groupKey) } }
+
+                    else -> {
+                        val byDay = state.groups.groupBy { it.schedule.slotDate }
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            state.error?.let { item { ErrorText(it) } }
+                            item(key = "freshness") { FreshnessNotice(state.lastUpdated, state.stale) }
+                            item(key = "stats") {
+                                StatRow(
+                                    listOf(
+                                        Stat("Grupos", state.groups.size),
+                                        Stat("Pedidos pendientes", state.groups.sumOf { it.pendingCount }),
+                                        Stat("Con incidencia", state.groups.count { it.incidentCount > 0 }),
+                                    ),
+                                )
+                            }
+                            if (state.reminders.isNotEmpty()) item(key = "reminders") { RemindersCard(state.reminders) }
+                            byDay.forEach { (day, groups) ->
+                                item(key = "day-$day") { DayTitle(day) }
+                                items(groups, key = { it.groupKey }) { GroupCard(it) { onOpenGroup(it.groupKey) } }
+                            }
                         }
                     }
                 }

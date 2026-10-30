@@ -39,6 +39,7 @@ import com.grupo4.dlecheymielapp.data.admin.AssignmentKind
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.ui.common.BrandHeader
+import com.grupo4.dlecheymielapp.ui.common.FreshnessNotice
 import com.grupo4.dlecheymielapp.ui.common.LabeledRow
 import com.grupo4.dlecheymielapp.ui.common.Pill
 import com.grupo4.dlecheymielapp.ui.common.RemindersCard
@@ -99,16 +100,16 @@ fun AdminOrdersScreen(
 
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.error != null && state.orders.isEmpty() -> CenteredMessage(state.error, "Reintentar", onRefresh)
             else -> PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
-                if (state.orders.isEmpty()) {
-                    CenteredMessage("No hay pedidos con esos filtros. Deslice hacia abajo para actualizar.")
-                } else {
-                    LazyColumn(
+                when {
+                    state.error != null && state.orders.isEmpty() -> CenteredMessage(state.error, "Actualizar", onRefresh)
+                    state.orders.isEmpty() -> CenteredMessage("No hay pedidos con esos filtros. Deslice hacia abajo para actualizar.", "Actualizar", onRefresh)
+                    else -> LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
+                        item(key = "freshness") { FreshnessNotice(state.lastUpdated, state.stale) }
                         if (state.reminders.isNotEmpty()) item(key = "reminders") { RemindersCard(state.reminders) }
                         items(state.orders, key = { it.id }) { OrderCard(it) { onOpenOrder(it.id) } }
                     }

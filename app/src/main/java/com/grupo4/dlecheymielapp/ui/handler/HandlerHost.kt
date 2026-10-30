@@ -3,11 +3,13 @@ package com.grupo4.dlecheymielapp.ui.handler
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -17,6 +19,7 @@ import com.grupo4.dlecheymielapp.data.fulfillment.HandlerRepository
 import com.grupo4.dlecheymielapp.data.reminders.ReminderScope
 import com.grupo4.dlecheymielapp.data.reminders.RemindersRepository
 import com.grupo4.dlecheymielapp.data.reminders.UpcomingReminder
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Encargado entry point. The profile decides the view: in-person delivery lists orders; pickup lists groups,
@@ -48,20 +51,30 @@ fun HandlerHost(repository: HandlerRepository, reminders: RemindersRepository, o
     } else {
         null
     }
+    // Coming back from the background refreshes the list (and the open group). The first resume opened the screen already.
+    val firstResume = remember { AtomicBoolean(true) }
+    LifecycleResumeEffect(Unit) {
+        if (!firstResume.getAndSet(false)) { listVm.refresh(); groupVm?.load(quiet = true) }
+        onPauseOrDispose {}
+    }
+
+    // The system Back and the in-app back share these, so both refresh the same way.
+    // The list shows status and incident counts, so coming back refreshes it.
+    val closeOrder: () -> Unit = { selectedId = null; listVm.refresh(); groupVm?.load(quiet = true) }
+    val closeGroup: () -> Unit = { selectedGroup = null; listVm.refresh() }
     when {
         id != null -> {
-            BackHandler { selectedId = null }
-            // The list shows status and incident counts, so coming back refreshes it.
-            FieldOrderDetail(id, repository, onUnauthorized, onBack = { selectedId = null; listVm.refresh(); groupVm?.load(quiet = true) })
+            BackHandler { closeOrder() }
+            FieldOrderDetail(id, repository, onUnauthorized, onBack = closeOrder)
         }
 
         groupVm != null -> {
-            BackHandler { selectedGroup = null }
+            BackHandler { closeGroup() }
             val groupState by groupVm.state.collectAsState()
             val groupActions by groupVm.cardActions.state.collectAsState()
             PickupGroupScreen(
                 groupState, groupActions, groupVm.cardActions,
-                onBack = { selectedGroup = null; listVm.refresh() }, onRetry = { groupVm.load() }, onOpenOrder = { selectedId = it },
+                onBack = closeGroup, onRetry = { groupVm.load() }, onOpenOrder = { selectedId = it },
             )
         }
 
@@ -99,15 +112,22 @@ fun FieldQueueHost(
     val listState by listVm.state.collectAsState()
     val listActions by listVm.cardActions.state.collectAsState()
 
+    val firstResume = remember { AtomicBoolean(true) }
+    LifecycleResumeEffect(Unit) {
+        if (!firstResume.getAndSet(false)) listVm.refresh()
+        onPauseOrDispose {}
+    }
+
     val id = selectedId
+    val closeOrder: () -> Unit = { selectedId = null; listVm.refresh() }
     if (id == null) {
         HandlerOrdersScreen(
             listState, listActions, listVm.cardActions, onRefresh = listVm::refresh, onOpenOrder = { selectedId = it }, onLogout = onLogout,
             eyebrow = eyebrow, title = title, subtitle = subtitle, emptyText = emptyText,
         )
     } else {
-        BackHandler { selectedId = null }
-        FieldOrderDetail(id, gateway, onUnauthorized, onBack = { selectedId = null; listVm.refresh() })
+        BackHandler { closeOrder() }
+        FieldOrderDetail(id, gateway, onUnauthorized, onBack = closeOrder)
     }
 }
 

@@ -40,6 +40,8 @@ import com.grupo4.dlecheymielapp.data.admin.PickupGroupDetail
 import com.grupo4.dlecheymielapp.data.admin.PickupGroupOrder
 import com.grupo4.dlecheymielapp.data.admin.PickupGroupSummary
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
+import com.grupo4.dlecheymielapp.ui.common.BrandHeader
+import com.grupo4.dlecheymielapp.ui.common.FreshnessNotice
 import com.grupo4.dlecheymielapp.ui.common.LabeledRow
 import com.grupo4.dlecheymielapp.ui.common.Pill
 import com.grupo4.dlecheymielapp.ui.common.SoftCard
@@ -56,10 +58,12 @@ fun AdminGroupsScreen(
     onRefresh: () -> Unit,
     onOnlyUnassigned: (Boolean) -> Unit,
     onOpenGroup: (String) -> Unit,
+    onLogout: (() -> Unit)? = null,
+    userName: String? = null,
 ) {
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)) {
-            Text("Asignaciones", style = MaterialTheme.typography.headlineMedium)
+        BrandHeader("ADMINISTRACIÓN", "Asignaciones", userName, onLogout)
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp)) {
             Text(
                 "Grupos de recojo. La entrega en persona y el delivery se asignan desde el detalle de cada pedido.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -70,20 +74,22 @@ fun AdminGroupsScreen(
         }
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.error != null && state.groups.isEmpty() -> CenteredMessage(state.error, "Reintentar", onRefresh)
             else -> PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
-                if (state.groups.isEmpty()) {
-                    CenteredMessage("No hay grupos de recojo en los próximos días. Deslice hacia abajo para actualizar.")
-                } else {
-                    val byDay = state.groups.groupBy { it.schedule.slotDate }
-                    LazyColumn(
-                        Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        byDay.forEach { (day, groups) ->
-                            item(key = "day-$day") { Text(formatSlotDate(day), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp)) }
-                            items(groups, key = { it.groupKey }) { GroupCard(it) { onOpenGroup(it.groupKey) } }
+                when {
+                    state.error != null && state.groups.isEmpty() -> CenteredMessage(state.error, "Actualizar", onRefresh)
+                    state.groups.isEmpty() -> CenteredMessage("No hay grupos de recojo en los próximos días. Deslice hacia abajo para actualizar.", "Actualizar", onRefresh)
+                    else -> {
+                        val byDay = state.groups.groupBy { it.schedule.slotDate }
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            item(key = "freshness") { FreshnessNotice(state.lastUpdated, state.stale) }
+                            byDay.forEach { (day, groups) ->
+                                item(key = "day-$day") { Text(formatSlotDate(day), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp)) }
+                                items(groups, key = { it.groupKey }) { GroupCard(it) { onOpenGroup(it.groupKey) } }
+                            }
                         }
                     }
                 }
