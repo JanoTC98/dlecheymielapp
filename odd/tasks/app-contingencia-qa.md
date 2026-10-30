@@ -84,3 +84,13 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
   - Finding 1, `CardActions.settle` could leave a card busy if `onChanged()` throws. Not reproducible today: both implementations (`load().join()` and `PickupGroupViewModel.fetchGroup`) catch their exceptions and only propagate scope cancellation, when the ViewModel is already dead. Defensive `finally` planned.
   - Finding 2, `OrderDetailViewModel` swallows `CancellationException`. Its broad catches pre-date the change (7 at baseline `1a35d45`), and the detail ViewModels never cancel their own jobs. Planned: rethrow cancellation in the catches touched by T2.
   - Both hardenings go into the single correction batch after the Sonnet verifier reports.
+- **L11:** Sonnet verifier results.
+  - Pass: S1-S3, S6, S8, S9, S10.
+  - Fail: S5, blocker B1. A second card's reload restart cancelled the first card's awaited load; `join()` on a cancelled job returns at once, so card 1 unlocked before any reload finished.
+  - Advisories: A1 (untrimmed phone sent); A2-A5 low or present at baseline.
+  - Single correction batch `4d81ce8`, each fix with a RED test first:
+    - B1: `reloadAndWait()` follows the replacement `job` until the awaited one is current. Test `aSecondCardRestartingTheReloadDoesNotUnlockTheFirstCardEarly`.
+    - A1: the trimmed phone is sent. Assertion added to `validProviderIsSentAndValidIncidentIsStillReported`.
+    - Codex finding 1: `settle()` uses try/catch/finally. Test `aReloadThatThrowsStillUnlocksTheCard`.
+    - Codex finding 2: `CancellationException` is rethrown in the `OrderDetailViewModel` and `AdminOrderDetailViewModel` catches (7 in each).
+  - Suite: 101 tests, 0 failures; build OK. One recheck limited to B1 requested from the same verifier.
