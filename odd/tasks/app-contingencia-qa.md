@@ -46,7 +46,7 @@ Routes: **P** = parent (Opus) inline; **H** = Haiku writer; **S** = Sonnet verif
 | T0 | S0 | P | — | none | done (baseline 69 tests green; branch `fix/app-contingencia-qa`; CodeGraph indexed) | `1a35d45` (user) |
 | T1 | S1, S2, S3, S8 | H (unit "lists"), isolated worktree | T0 | none | done (unit tests green; device check pending in T8) | `7667bc7` |
 | T2 | S5 | H (unit "advance"), isolated worktree, plus a parent gap fix | T0 | item 4 (async/concurrency) → S verifier | done; verified (Sonnet: B1 fixed on recheck); native review approved | `59c08fd`, `5689de7`, `4d81ce8` |
-| T3 | S4 | H, isolated worktree | T1 | none (flag off) | in progress | — |
+| T3 | S4 | H, isolated worktree, plus a parent release guard | T1 | none (flag off) | done (unit tests green; device check pending in T8) | `488f5f2`, `6e844af` |
 | T4 | S6, S9, S10 | H (unit "session & forms"), isolated worktree | T0 | item 2 (backup/credentials) → S verifier | done; verified (S6, S9, S10 pass); native review approved | `fc131f5`, `dc601d9`, `4d81ce8` (A1) |
 | T5 | S11 | H (unit "detail info"), isolated worktree | T2 | none | in progress | — |
 | T6 | S12 | H | T5 | none | pending | — |
@@ -103,3 +103,8 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
 - **L14:** wave 2 launched, T3 and T5 on Haiku in isolated worktrees.
   - Contract samples for T5 are in the scratchpad `samples/`. The admin order detail has `pricingSnapshot` (`items`, `total`, `internalDeliveryFee`), `refundStatus` and a per-item `commercialSnapshot`. Field-side orders carry only `payAtDelivery {paymentStatus, codeVerified, linkAvailable}`.
   - Finding for T8: `GET /api/v1/handler/orders/12` as the assigned in-person handler returns **404** after the admin reassigned the slot through the incident flow. Check whether the reassignment intentionally drops the handler assignment.
+- **L15:** T3 cherry-picked (`488f5f2`).
+  - It adds a `QueuePoller` plus `QueuePollingEffect` (`repeatOnLifecycle(RESUMED)`), only on the list branches of `AdminHost`, `HandlerHost` and `FieldQueueHost`, with 3 virtual-time tests.
+  - Parent change `6e844af`: release hardcodes `QUEUE_POLLING_ENABLED=false`; only debug reads `dleche.queuePolling`.
+  - Differential check: with the override set, debug gives `true` and release gives `false`; `local.properties` was restored.
+  - Suite: 104 tests, 0 failures.
