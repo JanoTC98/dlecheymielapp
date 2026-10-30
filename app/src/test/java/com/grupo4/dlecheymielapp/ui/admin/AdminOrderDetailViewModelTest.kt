@@ -83,4 +83,23 @@ class AdminOrderDetailViewModelTest {
         awaitState { vm.state.value.message != null && !vm.state.value.busy }
         assertEquals("El pedido pasó a En camino.", vm.state.value.message)
     }
+
+    @Test
+    fun reassignOffersEveryOpenSlotButNotTheOrdersCurrentOne() {
+        server.enqueue(json("""{"id":7,"status":"PREPARING","fulfillmentSnapshot":{"mode":"INTERNAL_DELIVERY","slotDate":"2026-11-02","startTime":"12:00","endTime":"13:00"}}"""))
+        server.enqueue(json("""[
+            {"slotDate":"2026-11-02","startTime":"12:00","endTime":"13:00","timezone":"America/Lima","remainingCapacity":5},
+            {"slotDate":"2026-11-02","startTime":"13:00","endTime":"14:00","timezone":"America/Lima","remainingCapacity":6},
+            {"slotDate":"2026-11-03","startTime":"12:00","endTime":"13:00","timezone":"America/Lima","remainingCapacity":5},
+            {"slotDate":"2026-11-04","startTime":"11:00","endTime":"12:00","timezone":"America/Lima","remainingCapacity":0}
+        ]"""))
+        val vm = AdminOrderDetailViewModel(7, repo) {}
+        awaitState { vm.state.value.order != null }
+
+        vm.openReassign(incidentId = 3)
+        awaitState { vm.state.value.dialog.let { it is AdminDialog.Slot && !it.loading } }
+
+        val offered = (vm.state.value.dialog as AdminDialog.Slot).slots.map { "${it.slotDate} ${it.startTime}" }
+        assertEquals(listOf("2026-11-02 13:00", "2026-11-03 12:00"), offered)
+    }
 }

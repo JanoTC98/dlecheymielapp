@@ -100,6 +100,17 @@ fun PickupGroupOrderWork.toCard(group: PickupGroupWorkDetail) = CardOrder(
     payAtDelivery = payAtDelivery, incidentCount = incidentCount,
 )
 
+/** Why the employee cannot request the payment link yet, or null when the backend has opened it. */
+fun paymentLinkNotice(info: PayAtDeliveryInfo): String? =
+    if (info.linkAvailable) null else "El cobro se habilita cuando empiece la franja de entrega."
+
+/**
+ * The card's own line about a validated code. It is hidden while the banner shows the same message, so the employee
+ * reads it once.
+ */
+fun codeValidatedLine(card: CardState, codeVerified: Boolean): String? =
+    AWAITING_PAYMENT_MESSAGE.takeIf { codeVerified && card.message == null }
+
 private fun accentFor(status: OrderStatus): Color = when (status) {
     OrderStatus.IN_TRANSIT -> Color(0xFF059669)
     OrderStatus.READY_FOR_PICKUP -> Color(0xFFF97316)
@@ -141,11 +152,16 @@ fun FieldOrderCard(order: CardOrder, card: CardState, callbacks: CardCallbacks, 
                 }
 
                 ContactButtons(order.phone, context)
-                if (order.payAtDelivery != null && order.payAtDelivery.paymentStatus != PaymentStatus.approved && !order.status.isTerminal) {
-                    OutlinedButton(onClick = { callbacks.openPayment(order) }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth()) {
+                order.payAtDelivery?.takeIf { it.paymentStatus != PaymentStatus.approved && !order.status.isTerminal }?.let { info ->
+                    val notice = paymentLinkNotice(info)
+                    OutlinedButton(
+                        onClick = { callbacks.openPayment(order) }, enabled = notice == null,
+                        shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Icon(Icons.Filled.QrCode2, contentDescription = null, modifier = Modifier.padding(end = 6.dp).size(18.dp))
                         Text("Cobrar con QR o link")
                     }
+                    notice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                 HandoffArea(order, card, callbacks)
 
@@ -231,7 +247,7 @@ private fun HandoffArea(order: CardOrder, card: CardState, callbacks: CardCallba
         }
 
         order.status == order.handoffStatus && order.payAtDelivery?.codeVerified == true ->
-            Text("Código validado. El pedido se cerrará cuando el cliente pague.", style = MaterialTheme.typography.bodyMedium)
+            codeValidatedLine(card, codeVerified = true)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
         order.status == order.handoffStatus -> {
             OutlinedTextField(

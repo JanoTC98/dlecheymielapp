@@ -6,6 +6,7 @@ import com.grupo4.dlecheymielapp.core.network.ApiException
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderDetail
 import com.grupo4.dlecheymielapp.data.admin.AdminRepository
 import com.grupo4.dlecheymielapp.data.admin.RescheduleSlot
+import com.grupo4.dlecheymielapp.data.admin.excludingSlotOf
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.ui.common.toAdminMessage
@@ -134,7 +135,10 @@ class AdminOrderDetailViewModel(
         _state.update { it.copy(dialog = AdminDialog.Slot(incidentId), actionError = null) }
         viewModelScope.launch {
             try {
-                val slots = repository.rescheduleSlots(id).filter { it.remainingCapacity > 0 }
+                val open = repository.rescheduleSlots(id).filter { it.remainingCapacity > 0 }
+                // Reassigning to the slot the order already holds would change nothing.
+                val current = if (incidentId != null) _state.value.order?.fulfillmentSnapshot else null
+                val slots = if (current != null) open.excludingSlotOf(current) else open
                 updateSlot { it.copy(loading = false, slots = slots) }
             } catch (e: CancellationException) {
                 throw e
