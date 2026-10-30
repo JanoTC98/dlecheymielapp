@@ -276,9 +276,11 @@ fun CardActionDialogs(state: CardActionsState, callbacks: CardCallbacks) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Cuente qué pasó (cliente ausente, dirección incorrecta, no contesta…).", style = MaterialTheme.typography.bodyMedium)
+                    val counter = "${draft.text.length}/$MAX_INCIDENT_LENGTH"
                     OutlinedTextField(
                         value = draft.text, onValueChange = callbacks::onIncidentText, enabled = !draft.busy, minLines = 4,
-                        supportingText = { Text("${draft.text.length}/$MAX_INCIDENT_LENGTH") }, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(if (draft.text.isBlank()) "Describa la incidencia · $counter" else counter) },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     draft.error?.let { ErrorText(it) }
                 }
