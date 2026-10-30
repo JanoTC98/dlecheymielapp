@@ -85,7 +85,7 @@ private fun DetailPreparingPreview() = Framed { DetailWith(OrderDetailState(load
 @Composable
 private fun DetailWith(state: OrderDetailState) = OrderDetailScreen(
     state = state, onBack = {}, onRetry = {}, onCodeChange = {}, onSubmitHandoff = {}, onOpenIncident = {}, onCloseIncident = {},
-    onIncidentTextChange = {}, onSubmitIncident = {}, onRequestPaymentLink = {},
+    onIncidentTextChange = {}, onSubmitIncident = {}, onRequestPaymentLink = {}, onAskAdvance = {},
 )
 
 private val deliveryOrder = HandlerOrderWork(

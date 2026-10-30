@@ -64,6 +64,7 @@ fun OrderDetailScreen(
     onIncidentTextChange: (String) -> Unit,
     onSubmitIncident: () -> Unit,
     onRequestPaymentLink: () -> Unit,
+    onAskAdvance: (Boolean) -> Unit,
     onAdvance: () -> Unit = {},
     onAskComplete: (Boolean) -> Unit = {},
     onComplete: () -> Unit = {},
@@ -100,6 +101,15 @@ fun OrderDetailScreen(
     }
 
     if (state.incidentDialogOpen) IncidentDialog(state, onCloseIncident, onIncidentTextChange, onSubmitIncident)
+    if (state.confirmAdvance) {
+        AlertDialog(
+            onDismissRequest = { onAskAdvance(false) },
+            title = { Text("Confirmar cambio de estado") },
+            text = { Text("¿Marcar ${state.order?.publicCode ?: "este pedido"} como ${state.nextStep?.first?.label.orEmpty()}?") },
+            confirmButton = { Button(onClick = onAdvance, enabled = !state.actionBusy) { Text("Confirmar") } },
+            dismissButton = { TextButton(onClick = { onAskAdvance(false) }, enabled = !state.actionBusy) { Text("Cancelar") } },
+        )
+    }
     if (state.confirmComplete) {
         AlertDialog(
             onDismissRequest = { onAskComplete(false) },

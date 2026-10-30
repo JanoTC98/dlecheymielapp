@@ -55,6 +55,8 @@ data class OrderDetailState(
     val actionError: String? = null,
     val actionMessage: String? = null,
     val confirmComplete: Boolean = false,
+    /** En camino or a terminal step waiting for its confirmation dialog. */
+    val confirmAdvance: Boolean = false,
 
     val providerName: String = "",
     val providerPhone: String = "",
@@ -94,26 +96,29 @@ class OrderDetailViewModel(
     init { load() }
 
     fun load() {
+        viewModelScope.launch { fetch() }
+    }
+
+    /** Suspends until the order is reloaded: the write locks are released only after this has finished. */
+    private suspend fun fetch() {
         _state.update { it.copy(loading = it.order == null, loadError = null) }
-        viewModelScope.launch {
-            try {
-                val order = gateway.order(orderId)
-                val incidents = runCatching { gateway.incidents(orderId) }.getOrDefault(emptyList())
-                val provider = if (gateway.capabilities.canRegisterProvider) runCatching { gateway.provider(orderId) }.getOrNull() else null
-                _state.update {
-                    it.copy(
-                        loading = false, order = order, incidents = incidents,
-                        // Once the payment is approved or the order is closed the link is of no use: forget it.
-                        paymentUrl = it.paymentUrl.takeUnless { _ -> order.status.isTerminal || order.payAtDelivery?.paymentStatus == PaymentStatus.approved },
-                        // Keep what the user is typing; fill the fields only the first time.
-                        providerName = if (it.providerName.isEmpty()) provider?.name.orEmpty() else it.providerName,
-                        providerPhone = if (it.providerPhone.isEmpty()) provider?.phone.orEmpty() else it.providerPhone,
-                    )
-                }
-            } catch (e: Exception) {
-                handleAuth(e)
-                _state.update { it.copy(loading = false, loadError = e.toGenericMessage()) }
+        try {
+            val order = gateway.order(orderId)
+            val incidents = runCatching { gateway.incidents(orderId) }.getOrDefault(emptyList())
+            val provider = if (gateway.capabilities.canRegisterProvider) runCatching { gateway.provider(orderId) }.getOrNull() else null
+            _state.update {
+                it.copy(
+                    loading = false, order = order, incidents = incidents,
+                    // Once the payment is approved or the order is closed the link is of no use: forget it.
+                    paymentUrl = it.paymentUrl.takeUnless { _ -> order.status.isTerminal || order.payAtDelivery?.paymentStatus == PaymentStatus.approved },
+                    // Keep what the user is typing; fill the fields only the first time.
+                    providerName = if (it.providerName.isEmpty()) provider?.name.orEmpty() else it.providerName,
+                    providerPhone = if (it.providerPhone.isEmpty()) provider?.phone.orEmpty() else it.providerPhone,
+                )
             }
+        } catch (e: Exception) {
+            handleAuth(e)
+            _state.update { it.copy(loading = false, loadError = e.toGenericMessage()) }
         }
     }
 
@@ -125,6 +130,7 @@ class OrderDetailViewModel(
         if (!current.canHandoff || !current.codeReady) return
         _state.update { it.copy(handoffBusy = true, handoffError = null, handoffSuccess = null) }
         viewModelScope.launch {
+            var reload = true
             try {
                 val result = gateway.handoff(orderId, current.code)
                 val message = if (result.awaitingPayment) {
@@ -132,38 +138,52 @@ class OrderDetailViewModel(
                 } else {
                     "Pedido entregado."
                 }
-                _state.update { it.copy(handoffBusy = false, code = "", handoffSuccess = message) }
-                load()
+                _state.update { it.copy(code = "", handoffSuccess = message) }
             } catch (e: Exception) {
                 handleAuth(e)
-                _state.update { it.copy(handoffBusy = false, handoffError = e.toHandoffMessage()) }
+                _state.update { it.copy(handoffError = e.toHandoffMessage()) }
                 // The order may have changed under us (delivered by someone else, state moved): show the truth.
-                if (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED")) load()
+                reload = e.leavesStateUnknown() || (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED"))
             }
+            if (reload) fetch()
+            _state.update { it.copy(handoffBusy = false) }
         }
     }
 
     // ---- Delivery / Operador: avanzar y cerrar ----
 
+    /**
+     * The first call asks for confirmation when the step is En camino or terminal; the confirmed call sends it.
+     * The actions stay busy until the order has been reloaded, so a second tap cannot act on the old status.
+     */
     fun advance() {
         val current = _state.value
         val step = current.nextStep ?: return
         if (current.actionBusy) return
         val expected = current.order?.status ?: return
-        _state.update { it.copy(actionBusy = true, actionError = null, actionMessage = null) }
+        if (step.first.needsAdvanceConfirmation() && !current.confirmAdvance) {
+            _state.update { it.copy(confirmAdvance = true, actionError = null) }
+            return
+        }
+        _state.update { it.copy(actionBusy = true, actionError = null, actionMessage = null, confirmAdvance = false) }
         viewModelScope.launch {
+            var reload = true
             try {
                 gateway.advance(orderId, expected)
-                _state.update { it.copy(actionBusy = false, actionMessage = "El pedido pasó a ${step.first.label}.") }
-                load()
+                _state.update { it.copy(actionMessage = "El pedido pasó a ${step.first.label}.") }
             } catch (e: Exception) {
                 handleAuth(e)
-                _state.update { it.copy(actionBusy = false, actionError = e.toActionMessage()) }
-                // A stale step must not be retried blindly: show what the order really is.
-                if (e is ApiException && e.code == "ORDER_STATE_CHANGED") load()
+                _state.update { it.copy(actionError = e.toActionMessage()) }
+                // A stale or unknown step must not be retried blindly: show what the order really is first.
+                reload = e.leavesStateUnknown()
             }
+            if (reload) fetch()
+            _state.update { it.copy(actionBusy = false) }
         }
     }
+
+    /** Shows or closes the En camino confirmation; closing sends nothing. */
+    fun askAdvance(show: Boolean) = _state.update { it.copy(confirmAdvance = show) }
 
     fun askComplete(show: Boolean) = _state.update { it.copy(confirmComplete = show) }
 
@@ -172,15 +192,17 @@ class OrderDetailViewModel(
         if (current.actionBusy || !current.closesWithoutCode || current.order?.status != OrderStatus.IN_TRANSIT) return
         _state.update { it.copy(actionBusy = true, actionError = null, actionMessage = null, confirmComplete = false) }
         viewModelScope.launch {
+            var reload = true
             try {
                 gateway.complete(orderId)
-                _state.update { it.copy(actionBusy = false, actionMessage = "Pedido entregado.") }
-                load()
+                _state.update { it.copy(actionMessage = "Pedido entregado.") }
             } catch (e: Exception) {
                 handleAuth(e)
-                _state.update { it.copy(actionBusy = false, actionError = e.toHandoffMessage()) }
-                if (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED")) load()
+                _state.update { it.copy(actionError = e.toHandoffMessage()) }
+                reload = e.leavesStateUnknown() || (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED"))
             }
+            if (reload) fetch()
+            _state.update { it.copy(actionBusy = false) }
         }
     }
 

@@ -28,21 +28,24 @@ class PickupGroupViewModel(
     val state: StateFlow<PickupGroupState> = _state.asStateFlow()
 
     /** The customer's code is typed on each order's card, as at the counter of the web page. */
-    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { load(quiet = true) })
+    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { fetchGroup(quiet = true) })
 
     init { load() }
 
     fun load(quiet: Boolean = false) {
+        viewModelScope.launch { fetchGroup(quiet) }
+    }
+
+    /** Suspends until the group is reloaded, so a card can stay locked until the list shows the server state. */
+    private suspend fun fetchGroup(quiet: Boolean) {
         _state.update { it.copy(loading = it.group == null, refreshing = it.group != null && !quiet, error = null) }
-        viewModelScope.launch {
-            try {
-                val group = repository.pickupGroup(key)
-                _state.update { it.copy(loading = false, refreshing = false, group = group) }
-            } catch (e: Exception) {
-                if (e is ApiException && e.status == 401) onUnauthorized()
-                val text = if (e is ApiException && e.code == "GROUP_NOT_FOUND") "Este grupo ya no está asignado a su cuenta." else e.toGenericMessage()
-                _state.update { it.copy(loading = false, refreshing = false, error = text) }
-            }
+        try {
+            val group = repository.pickupGroup(key)
+            _state.update { it.copy(loading = false, refreshing = false, group = group) }
+        } catch (e: Exception) {
+            if (e is ApiException && e.status == 401) onUnauthorized()
+            val text = if (e is ApiException && e.code == "GROUP_NOT_FOUND") "Este grupo ya no está asignado a su cuenta." else e.toGenericMessage()
+            _state.update { it.copy(loading = false, refreshing = false, error = text) }
         }
     }
 }

@@ -13,6 +13,7 @@ import com.grupo4.dlecheymielapp.data.admin.PickupGroupSummary
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.data.reminders.UpcomingReminder
 import com.grupo4.dlecheymielapp.ui.common.toAdminMessage
+import com.grupo4.dlecheymielapp.ui.handler.leavesStateUnknown
 import com.grupo4.dlecheymielapp.ui.common.toGenericMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -192,6 +193,7 @@ class AdminGroupDetailViewModel(
         }
     }
 
+    /** Groups move only to preparation and pickup, never to En camino or a terminal status, so no confirmation is needed. */
     fun advanceGroup() {
         val group = _state.value.group ?: return
         val (from, to, _) = nextStep(group) ?: return
@@ -225,6 +227,7 @@ class AdminGroupDetailViewModel(
 
     fun clearMessage() = _state.update { it.copy(message = null, actionError = null) }
 
+    /** The group stays busy until it has been reloaded; after a timeout, a dropped connection or a conflict it is reloaded first. */
     private fun act(success: String?, block: suspend () -> String?) {
         if (_state.value.busy) return
         _state.update { it.copy(busy = true, message = null, actionError = null) }
@@ -235,9 +238,20 @@ class AdminGroupDetailViewModel(
                 _state.update { it.copy(busy = false, group = group, candidates = null, confirmUnassign = false, message = custom ?: success) }
             } catch (e: Exception) {
                 val text = e.adminText(onUnauthorized)
-                _state.update { it.copy(busy = false, actionError = text, candidates = null, confirmUnassign = false) }
-                if (e is ApiException && e.code == "ORDER_STATE_CHANGED") load()
+                _state.update { it.copy(actionError = text, candidates = null, confirmUnassign = false) }
+                if (e.leavesStateUnknown()) reloadGroup()
+                _state.update { it.copy(busy = false) }
             }
+        }
+    }
+
+    private suspend fun reloadGroup() {
+        try {
+            val group = repository.pickupGroup(key)
+            _state.update { it.copy(group = group) }
+        } catch (e: Exception) {
+            val text = e.adminText(onUnauthorized)
+            _state.update { it.copy(actionError = text) }
         }
     }
 }

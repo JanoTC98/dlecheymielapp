@@ -251,7 +251,7 @@ private fun HandoffArea(order: CardOrder, card: CardState, callbacks: CardCallba
         }
 
         caps.canAdvance && nextStepOf(order.status) != null -> Button(
-            onClick = { callbacks.advance(order.id, order.status) }, enabled = !card.busy, shape = RoundedCornerShape(50),
+            onClick = { callbacks.advance(order.id, order.status, order.code ?: "Pedido ${order.id}") }, enabled = !card.busy, shape = RoundedCornerShape(50),
             modifier = Modifier.fillMaxWidth().height(48.dp),
         ) {
             if (card.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
@@ -304,6 +304,15 @@ fun CardActionDialogs(state: CardActionsState, callbacks: CardCallbacks) {
                 }
             },
             confirmButton = { TextButton(onClick = callbacks::closePayment) { Text("Cerrar") } },
+        )
+    }
+    state.advanceFor?.let { pending ->
+        AlertDialog(
+            onDismissRequest = callbacks::cancelAdvance,
+            title = { Text("Confirmar cambio de estado") },
+            text = { Text("¿Marcar ${pending.label} como ${pending.target.label}?") },
+            confirmButton = { Button(onClick = callbacks::confirmAdvance) { Text("Confirmar") } },
+            dismissButton = { TextButton(onClick = callbacks::cancelAdvance) { Text("Cancelar") } },
         )
     }
     if (state.completeFor != null) {

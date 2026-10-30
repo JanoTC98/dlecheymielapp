@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 /** What one order card is doing: the code being typed and the result of the last action on it. */
 data class CardState(
@@ -44,12 +45,17 @@ data class PaymentDraft(
     val error: String? = null,
 )
 
+/** A status change waiting for the confirmation dialog. [label] is the order code the employee sees. */
+data class PendingAdvance(val id: Long, val label: String, val from: OrderStatus, val target: OrderStatus)
+
 data class CardActionsState(
     val cards: Map<Long, CardState> = emptyMap(),
     val incident: IncidentDraft? = null,
     val payment: PaymentDraft? = null,
     /** Order waiting for the "mark as delivered" confirmation (Operador, paid in advance). */
     val completeFor: Long? = null,
+    /** Status change waiting for its confirmation (En camino or a terminal status). */
+    val advanceFor: PendingAdvance? = null,
     val notice: String? = null,
 ) {
     fun card(id: Long): CardState = cards[id] ?: CardState()
@@ -62,13 +68,25 @@ fun nextStepOf(status: OrderStatus): Pair<OrderStatus, String>? = when (status) 
     else -> null
 }
 
+/** Statuses that need an explicit confirmation before the request is sent: En camino and every terminal status. */
+fun OrderStatus.needsAdvanceConfirmation(): Boolean = this == OrderStatus.IN_TRANSIT || isTerminal
+
+/**
+ * Timeouts, dropped connections and conflicts leave the real state unknown: the order must be reloaded
+ * before anybody tries again.
+ */
+fun Exception.leavesStateUnknown(): Boolean =
+    this is IOException || (this is ApiException && (status == 409 || code == "ORDER_STATE_CHANGED"))
+
 /** What the screens can ask of the cards. Previews and tests use [NoCardCallbacks]. */
 interface CardCallbacks {
     val capabilities: FieldCapabilities
 
     fun onCode(id: Long, value: String)
     fun validate(id: Long)
-    fun advance(id: Long, from: OrderStatus)
+    fun advance(id: Long, from: OrderStatus, label: String)
+    fun confirmAdvance()
+    fun cancelAdvance()
     fun askComplete(id: Long?)
     fun complete()
     fun openIncident(id: Long, label: String)
@@ -87,7 +105,9 @@ object NoCardCallbacks : CardCallbacks {
     override val capabilities = FieldCapabilities()
     override fun onCode(id: Long, value: String) = Unit
     override fun validate(id: Long) = Unit
-    override fun advance(id: Long, from: OrderStatus) = Unit
+    override fun advance(id: Long, from: OrderStatus, label: String) = Unit
+    override fun confirmAdvance() = Unit
+    override fun cancelAdvance() = Unit
     override fun askComplete(id: Long?) = Unit
     override fun complete() = Unit
     override fun openIncident(id: Long, label: String) = Unit
@@ -104,13 +124,14 @@ object NoCardCallbacks : CardCallbacks {
 /**
  * Acts on orders straight from a list card, with the same rules as the order's own screen: one request at a time per
  * order, a stale state is reloaded instead of retried, and an incident is sent once (every POST creates a new one).
- * [onChanged] reloads the list so the cards show what the server now says.
+ * A card stays locked from the first tap until [onChanged] has finished reloading the list, so a second tap cannot
+ * act on the status the server is about to replace. [onChanged] must suspend until the reload is done.
  */
 class CardActions(
     private val scope: CoroutineScope,
     private val gateway: FieldGateway,
     private val onUnauthorized: () -> Unit,
-    private val onChanged: () -> Unit,
+    private val onChanged: suspend () -> Unit,
 ) : CardCallbacks {
     private val _state = MutableStateFlow(CardActionsState())
     val state: StateFlow<CardActionsState> = _state.asStateFlow()
@@ -119,6 +140,12 @@ class CardActions(
 
     private fun edit(id: Long, change: (CardState) -> CardState) =
         _state.update { it.copy(cards = it.cards + (id to change(it.card(id)))) }
+
+    /** Releases the card only after the list has been reloaded when [reload] is set. */
+    private suspend fun settle(id: Long, reload: Boolean) {
+        if (reload) onChanged()
+        edit(id) { it.copy(busy = false) }
+    }
 
     override fun onCode(id: Long, value: String) =
         edit(id) { it.copy(code = value.filter { c -> c.isLetterOrDigit() }.take(12).uppercase(), error = null) }
@@ -130,6 +157,7 @@ class CardActions(
         _state.update { it.copy(notice = null) }
         edit(id) { it.copy(busy = true, error = null, message = null) }
         scope.launch {
+            var reload = true
             try {
                 val result = gateway.handoff(id, code)
                 val message = if (result.awaitingPayment) {
@@ -137,33 +165,52 @@ class CardActions(
                 } else {
                     "Pedido entregado."
                 }
-                edit(id) { it.copy(busy = false, code = "", message = message) }
-                onChanged()
+                edit(id) { it.copy(code = "", message = message) }
             } catch (e: Exception) {
                 handleAuth(e)
-                edit(id) { it.copy(busy = false, error = e.toHandoffMessage()) }
+                edit(id) { it.copy(error = e.toHandoffMessage()) }
                 // Delivered by someone else or moved under us: show what the order really is.
-                if (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED")) onChanged()
+                reload = e.leavesStateUnknown() || (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED"))
             }
+            settle(id, reload)
         }
     }
 
-    override fun advance(id: Long, from: OrderStatus) {
+    override fun advance(id: Long, from: OrderStatus, label: String) {
         val step = nextStepOf(from) ?: return
         if (!capabilities.canAdvance || _state.value.card(id).busy) return
+        val pending = PendingAdvance(id, label, from, step.first)
+        if (step.first.needsAdvanceConfirmation()) {
+            _state.update { it.copy(advanceFor = pending, notice = null) }
+        } else {
+            send(pending)
+        }
+    }
+
+    override fun confirmAdvance() {
+        val pending = _state.value.advanceFor ?: return
+        _state.update { it.copy(advanceFor = null) }
+        if (capabilities.canAdvance && !_state.value.card(pending.id).busy) send(pending)
+    }
+
+    override fun cancelAdvance() = _state.update { it.copy(advanceFor = null) }
+
+    private fun send(pending: PendingAdvance) {
+        val id = pending.id
         _state.update { it.copy(notice = null) }
         edit(id) { it.copy(busy = true, error = null, message = null) }
         scope.launch {
+            var reload = true
             try {
-                gateway.advance(id, from)
-                edit(id) { it.copy(busy = false, message = "El pedido pasó a ${step.first.label}.") }
-                onChanged()
+                gateway.advance(id, pending.from)
+                edit(id) { it.copy(message = "El pedido pasó a ${pending.target.label}.") }
             } catch (e: Exception) {
                 handleAuth(e)
-                edit(id) { it.copy(busy = false, error = e.toActionMessage()) }
-                // A stale step must not be retried blindly.
-                if (e is ApiException && e.code == "ORDER_STATE_CHANGED") onChanged()
+                edit(id) { it.copy(error = e.toActionMessage()) }
+                // A stale or unknown step must not be retried blindly: reload first.
+                reload = e.leavesStateUnknown()
             }
+            settle(id, reload)
         }
     }
 
@@ -175,15 +222,16 @@ class CardActions(
         if (!capabilities.canComplete || _state.value.card(id).busy) return
         edit(id) { it.copy(busy = true, error = null, message = null) }
         scope.launch {
+            var reload = true
             try {
                 gateway.complete(id)
-                edit(id) { it.copy(busy = false, message = "Pedido entregado.") }
-                onChanged()
+                edit(id) { it.copy(message = "Pedido entregado.") }
             } catch (e: Exception) {
                 handleAuth(e)
-                edit(id) { it.copy(busy = false, error = e.toHandoffMessage()) }
-                if (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED")) onChanged()
+                edit(id) { it.copy(error = e.toHandoffMessage()) }
+                reload = e.leavesStateUnknown() || (e is ApiException && (e.code == "HANDOFF_ALREADY_COMPLETED" || e.code == "ORDER_STATE_CHANGED"))
             }
+            settle(id, reload)
         }
     }
 
@@ -240,7 +288,7 @@ class CardActions(
 
     override fun refreshPayment() {
         closePayment()
-        onChanged()
+        scope.launch { onChanged() }
     }
 
     private fun handleAuth(e: Exception) {
