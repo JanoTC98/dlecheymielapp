@@ -14,7 +14,9 @@ import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import com.grupo4.dlecheymielapp.data.reminders.UpcomingReminder
 import com.grupo4.dlecheymielapp.ui.common.toAdminMessage
 import com.grupo4.dlecheymielapp.ui.common.toGenericMessage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,12 +38,15 @@ data class AdminOrdersState(
     val reminders: List<UpcomingReminder> = emptyList(),
     val filters: OrderFilters = OrderFilters(),
     val error: String? = null,
+    val lastUpdated: Long? = null,
+    val stale: Boolean = false,
 )
 
 class AdminOrdersViewModel(
     private val repository: AdminRepository,
     private val reminders: suspend () -> List<UpcomingReminder>,
     private val onUnauthorized: () -> Unit,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AdminOrdersState())
     val state: StateFlow<AdminOrdersState> = _state.asStateFlow()
@@ -59,10 +64,12 @@ class AdminOrdersViewModel(
 
     private fun changeFilters(change: (OrderFilters) -> OrderFilters) {
         _state.update { it.copy(filters = change(it.filters)) }
-        load(initial = true)
+        load(initial = true, restart = true)
     }
 
-    private fun load(initial: Boolean) {
+    /** One load at a time: a refresh during a running load is dropped. A filter change restarts it, since the running one reads the old filters. */
+    private fun load(initial: Boolean, restart: Boolean = false) {
+        if (job?.isActive == true && !restart) return
         job?.cancel()
         _state.update { it.copy(loading = initial, refreshing = !initial, error = null) }
         job = viewModelScope.launch {
@@ -71,10 +78,14 @@ class AdminOrdersViewModel(
                 val page = repository.orders(filters)
                 val count = runCatching { repository.newCount() }.getOrDefault(_state.value.newCount)
                 val upcoming = runCatching { reminders() }.getOrDefault(_state.value.reminders)
-                _state.update { it.copy(loading = false, refreshing = false, orders = page.items, newCount = count, reminders = upcoming) }
+                ensureActive()
+                _state.update { it.copy(loading = false, refreshing = false, orders = page.items, newCount = count, reminders = upcoming, lastUpdated = now(), stale = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val text = e.adminText(onUnauthorized)
-                _state.update { it.copy(loading = false, refreshing = false, error = text) }
+                // Keep the previous page and filters; the screen says the data is older.
+                _state.update { it.copy(loading = false, refreshing = false, error = text, stale = true) }
             }
         }
     }
@@ -88,14 +99,20 @@ data class AdminGroupsState(
     val groups: List<PickupGroupSummary> = emptyList(),
     val onlyUnassigned: Boolean = false,
     val error: String? = null,
+    /** Epoch millis of the last successful load; null until one succeeds. */
+    val lastUpdated: Long? = null,
+    /** True when the last refresh failed and the list still shows older data. */
+    val stale: Boolean = false,
 )
 
 class AdminGroupsViewModel(
-    private val repository: AdminRepository,
+    private val loadGroups: suspend (assigned: Boolean?) -> List<PickupGroupSummary>,
     private val onUnauthorized: () -> Unit,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AdminGroupsState())
     val state: StateFlow<AdminGroupsState> = _state.asStateFlow()
+    private var job: Job? = null
 
     init { load(initial = true) }
 
@@ -103,18 +120,24 @@ class AdminGroupsViewModel(
 
     fun setOnlyUnassigned(only: Boolean) {
         _state.update { it.copy(onlyUnassigned = only) }
-        load(initial = true)
+        load(initial = true, restart = true)
     }
 
-    private fun load(initial: Boolean) {
+    /** One load at a time: a refresh during a running load is dropped. A filter change restarts it. */
+    private fun load(initial: Boolean, restart: Boolean = false) {
+        if (job?.isActive == true && !restart) return
+        job?.cancel()
         _state.update { it.copy(loading = initial, refreshing = !initial, error = null) }
-        viewModelScope.launch {
+        job = viewModelScope.launch {
             try {
-                val groups = repository.pickupGroups(assigned = if (_state.value.onlyUnassigned) false else null)
-                _state.update { it.copy(loading = false, refreshing = false, groups = groups) }
+                val groups = loadGroups(if (_state.value.onlyUnassigned) false else null)
+                ensureActive()
+                _state.update { it.copy(loading = false, refreshing = false, groups = groups, lastUpdated = now(), stale = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val text = e.adminText(onUnauthorized)
-                _state.update { it.copy(loading = false, refreshing = false, error = text) }
+                _state.update { it.copy(loading = false, refreshing = false, error = text, stale = true) }
             }
         }
     }
@@ -227,6 +250,8 @@ data class AdminNotificationsState(
     val items: List<IncidentNotification> = emptyList(),
     val unreadOnly: Boolean = false,
     val error: String? = null,
+    val lastUpdated: Long? = null,
+    val stale: Boolean = false,
 ) {
     val unread: Int get() = items.count { !it.read }
 }
@@ -234,9 +259,11 @@ data class AdminNotificationsState(
 class AdminNotificationsViewModel(
     private val repository: AdminRepository,
     private val onUnauthorized: () -> Unit,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(AdminNotificationsState())
     val state: StateFlow<AdminNotificationsState> = _state.asStateFlow()
+    private var job: Job? = null
 
     init { load(initial = true) }
 
@@ -244,7 +271,7 @@ class AdminNotificationsViewModel(
 
     fun setUnreadOnly(only: Boolean) {
         _state.update { it.copy(unreadOnly = only) }
-        load(initial = true)
+        load(initial = true, restart = true)
     }
 
     /** Opening a notification marks it read; a failure here never blocks opening the order. */
@@ -253,15 +280,21 @@ class AdminNotificationsViewModel(
         viewModelScope.launch { runCatching { repository.markRead(id) } }
     }
 
-    private fun load(initial: Boolean) {
+    /** One load at a time: a refresh during a running load is dropped. A filter change restarts it. */
+    private fun load(initial: Boolean, restart: Boolean = false) {
+        if (job?.isActive == true && !restart) return
+        job?.cancel()
         _state.update { it.copy(loading = initial, refreshing = !initial, error = null) }
-        viewModelScope.launch {
+        job = viewModelScope.launch {
             try {
                 val items = repository.notifications(_state.value.unreadOnly)
-                _state.update { it.copy(loading = false, refreshing = false, items = items) }
+                ensureActive()
+                _state.update { it.copy(loading = false, refreshing = false, items = items, lastUpdated = now(), stale = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val text = e.adminText(onUnauthorized)
-                _state.update { it.copy(loading = false, refreshing = false, error = text) }
+                _state.update { it.copy(loading = false, refreshing = false, error = text, stale = true) }
             }
         }
     }

@@ -11,6 +11,9 @@ import com.grupo4.dlecheymielapp.data.fulfillment.HandlerType
 import com.grupo4.dlecheymielapp.data.fulfillment.PickupGroupWork
 import com.grupo4.dlecheymielapp.data.reminders.UpcomingReminder
 import com.grupo4.dlecheymielapp.ui.common.toGenericMessage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +32,10 @@ data class HandlerListState(
     val groups: List<PickupGroupWork> = emptyList(),
     val reminders: List<UpcomingReminder> = emptyList(),
     val error: String? = null,
+    /** Epoch millis of the last successful load; null until one succeeds. */
+    val lastUpdated: Long? = null,
+    /** True when the last refresh failed and the lists still show older data. */
+    val stale: Boolean = false,
 ) {
     /** Pickup Encargados work by groups; they must not call `/handler/orders` (403 HANDLER_TYPE_MISMATCH). */
     val isPickupHandler: Boolean get() = profile?.handlerType == HandlerType.PICKUP
@@ -38,30 +45,45 @@ class HandlerListViewModel(
     private val repository: HandlerRepository,
     private val reminders: suspend () -> List<UpcomingReminder>,
     private val onUnauthorized: () -> Unit,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HandlerListState())
     val state: StateFlow<HandlerListState> = _state.asStateFlow()
 
     /** Validate codes, report incidents… straight from the cards; the list reloads quietly afterwards. */
-    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { load(initial = false, quiet = true) })
+    val cardActions = CardActions(viewModelScope, repository, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true) })
+
+    private var job: Job? = null
 
     init { load(initial = true) }
 
     fun refresh() = load(initial = false)
 
-    private fun load(initial: Boolean, quiet: Boolean = false) {
+    /** A refresh while a load runs is dropped: the running load already reads the server. A card action restarts it, so its result is shown. */
+    private fun load(initial: Boolean, quiet: Boolean = false, restart: Boolean = false) {
+        if (job?.isActive == true && !restart) return
+        job?.cancel()
         _state.update { it.copy(loading = initial && it.profile == null, refreshing = !initial && !quiet, error = null) }
-        viewModelScope.launch {
+        job = viewModelScope.launch {
             try {
                 val profile = _state.value.profile ?: repository.profile()
                 val pickup = profile.handlerType == HandlerType.PICKUP
                 val orders = if (pickup) emptyList() else repository.orders().sortedForField()
                 val groups = if (pickup) repository.pickupGroups().sortedForPickup() else emptyList()
                 val upcoming = runCatching { reminders() }.getOrDefault(emptyList())
-                _state.update { it.copy(loading = false, refreshing = false, profile = profile, orders = orders, groups = groups, reminders = upcoming) }
+                ensureActive()
+                _state.update {
+                    it.copy(
+                        loading = false, refreshing = false, profile = profile, orders = orders, groups = groups, reminders = upcoming,
+                        lastUpdated = now(), stale = false,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (e is ApiException && e.status == 401) onUnauthorized()
-                _state.update { it.copy(loading = false, refreshing = false, error = e.toGenericMessage()) }
+                // The previous list, profile and filters stay on screen; the screen shows that they are older.
+                _state.update { it.copy(loading = false, refreshing = false, error = e.toGenericMessage(), stale = true) }
             }
         }
     }
@@ -73,26 +95,35 @@ class FieldListViewModel(
     private val loadOrders: suspend () -> List<HandlerOrderWork>,
     private val reminders: suspend () -> List<UpcomingReminder>,
     private val onUnauthorized: () -> Unit,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HandlerListState())
     val state: StateFlow<HandlerListState> = _state.asStateFlow()
 
-    val cardActions = CardActions(viewModelScope, gateway, onUnauthorized, onChanged = { load(initial = false, quiet = true) })
+    val cardActions = CardActions(viewModelScope, gateway, onUnauthorized, onChanged = { load(initial = false, quiet = true, restart = true) })
+
+    private var job: Job? = null
 
     init { load(initial = true) }
 
     fun refresh() = load(initial = false)
 
-    private fun load(initial: Boolean, quiet: Boolean = false) {
+    /** Same rule as [HandlerListViewModel]: one load at a time; a card action restarts it. */
+    private fun load(initial: Boolean, quiet: Boolean = false, restart: Boolean = false) {
+        if (job?.isActive == true && !restart) return
+        job?.cancel()
         _state.update { it.copy(loading = initial, refreshing = !initial && !quiet, error = null) }
-        viewModelScope.launch {
+        job = viewModelScope.launch {
             try {
                 val orders = loadOrders().sortedForField()
                 val upcoming = runCatching { reminders() }.getOrDefault(emptyList())
-                _state.update { it.copy(loading = false, refreshing = false, orders = orders, reminders = upcoming) }
+                ensureActive()
+                _state.update { it.copy(loading = false, refreshing = false, orders = orders, reminders = upcoming, lastUpdated = now(), stale = false) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (e is ApiException && e.status == 401) onUnauthorized()
-                _state.update { it.copy(loading = false, refreshing = false, error = e.toGenericMessage()) }
+                _state.update { it.copy(loading = false, refreshing = false, error = e.toGenericMessage(), stale = true) }
             }
         }
     }

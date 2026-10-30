@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +39,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.grupo4.dlecheymielapp.R
 import com.grupo4.dlecheymielapp.ui.theme.Brand
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val LIMA_ZONE = ZoneId.of("America/Lima")
+private val CLOCK_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * Top of every main screen, the mobile version of the web page header: brand mark, a small caps eyebrow, the title and
@@ -150,4 +157,27 @@ fun SuccessBanner(text: String, modifier: Modifier = Modifier, onDismiss: (() ->
 @Composable
 fun ErrorText(text: String, modifier: Modifier = Modifier) {
     Text(text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = modifier)
+}
+
+/** "10:42" in Lima time, the zone the rest of the app shows. */
+fun formatClock(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).atZone(LIMA_ZONE).format(CLOCK_FORMAT)
+
+/**
+ * Under a list: when it was last updated and, when the last refresh failed but older data is still shown, a notice saying so.
+ */
+@Composable
+fun FreshnessNotice(lastUpdated: Long?, stale: Boolean, modifier: Modifier = Modifier) {
+    if (lastUpdated == null && !stale) return
+    Column(modifier.fillMaxWidth()) {
+        lastUpdated?.let { Text("Actualizado ${formatClock(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (stale) Text("Datos desactualizados. No se pudo actualizar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+/** A visible "Actualizar" for an empty list, next to the pull gesture that some users do not find. */
+@Composable
+fun RefreshButton(onRefresh: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+        Button(onClick = onRefresh) { Text("Actualizar") }
+    }
 }

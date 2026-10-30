@@ -21,15 +21,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.grupo4.dlecheymielapp.data.admin.AdminRepository
 import com.grupo4.dlecheymielapp.data.reminders.ReminderScope
 import com.grupo4.dlecheymielapp.data.reminders.RemindersRepository
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAB_ORDERS = 0
 private const val TAB_ASSIGNMENTS = 1
@@ -44,26 +47,33 @@ fun AdminHost(repository: AdminRepository, reminders: RemindersRepository, userN
 
     // Tab ViewModels live here so switching tabs keeps their lists and filters.
     val ordersVm: AdminOrdersViewModel = viewModel(factory = viewModelFactory { initializer { AdminOrdersViewModel(repository, { reminders.upcoming(ReminderScope.ADMIN).items }, onUnauthorized) } })
-    val groupsVm: AdminGroupsViewModel = viewModel(factory = viewModelFactory { initializer { AdminGroupsViewModel(repository, onUnauthorized) } })
+    val groupsVm: AdminGroupsViewModel = viewModel(factory = viewModelFactory { initializer { AdminGroupsViewModel({ repository.pickupGroups(it) }, onUnauthorized) } })
     val notificationsVm: AdminNotificationsViewModel = viewModel(factory = viewModelFactory { initializer { AdminNotificationsViewModel(repository, onUnauthorized) } })
     val notifications by notificationsVm.state.collectAsState()
 
+    // Coming back from the background refreshes the lists. The first resume is the one that opened the screen, and the ViewModels already loaded.
+    val firstResume = remember { AtomicBoolean(true) }
+    LifecycleResumeEffect(Unit) {
+        if (!firstResume.getAndSet(false)) { ordersVm.refresh(); groupsVm.refresh(); notificationsVm.refresh() }
+        onPauseOrDispose {}
+    }
+
     val openOrder = orderId
     val openGroup = groupKey
+    // The system Back and the in-app back share these, so both refresh the same lists.
+    // An order may have moved, been reassigned or had its incident resolved.
+    val closeOrder: () -> Unit = { orderId = null; ordersVm.refresh(); groupsVm.refresh(); notificationsVm.refresh() }
+    val closeGroup: () -> Unit = { groupKey = null; groupsVm.refresh() }
 
     when {
         openOrder != null -> {
-            BackHandler { orderId = null }
-            OrderDetail(openOrder, repository, onUnauthorized, onBack = {
-                orderId = null
-                // The order may have moved, been reassigned or had its incident resolved.
-                ordersVm.refresh(); groupsVm.refresh(); notificationsVm.refresh()
-            })
+            BackHandler { closeOrder() }
+            OrderDetail(openOrder, repository, onUnauthorized, onBack = closeOrder)
         }
 
         openGroup != null -> {
-            BackHandler { groupKey = null }
-            GroupDetail(openGroup, repository, onUnauthorized, onBack = { groupKey = null; groupsVm.refresh() }, onOpenOrder = { orderId = it })
+            BackHandler { closeGroup() }
+            GroupDetail(openGroup, repository, onUnauthorized, onBack = closeGroup, onOpenOrder = { orderId = it })
         }
 
         else -> Scaffold(
@@ -71,15 +81,15 @@ fun AdminHost(repository: AdminRepository, reminders: RemindersRepository, userN
             bottomBar = {
                 NavigationBar {
                     NavigationBarItem(
-                        selected = tab == TAB_ORDERS, onClick = { tab = TAB_ORDERS },
+                        selected = tab == TAB_ORDERS, onClick = { tab = TAB_ORDERS; ordersVm.refresh() },
                         icon = { Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = null) }, label = { Text("Pedidos") },
                     )
                     NavigationBarItem(
-                        selected = tab == TAB_ASSIGNMENTS, onClick = { tab = TAB_ASSIGNMENTS },
+                        selected = tab == TAB_ASSIGNMENTS, onClick = { tab = TAB_ASSIGNMENTS; groupsVm.refresh() },
                         icon = { Icon(Icons.Filled.Groups, contentDescription = null) }, label = { Text("Asignaciones") },
                     )
                     NavigationBarItem(
-                        selected = tab == TAB_INCIDENTS, onClick = { tab = TAB_INCIDENTS },
+                        selected = tab == TAB_INCIDENTS, onClick = { tab = TAB_INCIDENTS; notificationsVm.refresh() },
                         icon = {
                             BadgedBox(badge = { if (notifications.unread > 0) Badge { Text(notifications.unread.toString()) } }) {
                                 Icon(Icons.Filled.Notifications, contentDescription = null)
@@ -103,12 +113,16 @@ fun AdminHost(repository: AdminRepository, reminders: RemindersRepository, userN
 
                     TAB_ASSIGNMENTS -> {
                         val state by groupsVm.state.collectAsState()
-                        AdminGroupsScreen(state, onRefresh = groupsVm::refresh, onOnlyUnassigned = groupsVm::setOnlyUnassigned, onOpenGroup = { groupKey = it })
+                        AdminGroupsScreen(
+                            state, onRefresh = groupsVm::refresh, onOnlyUnassigned = groupsVm::setOnlyUnassigned, onOpenGroup = { groupKey = it },
+                            onLogout = onLogout, userName = userName,
+                        )
                     }
 
                     else -> AdminNotificationsScreen(
                         notifications, onRefresh = notificationsVm::refresh, onUnreadOnly = notificationsVm::setUnreadOnly,
                         onOpen = { notificationsVm.markRead(it.id); orderId = it.orderId },
+                        onLogout = onLogout, userName = userName,
                     )
                 }
             }
