@@ -5,4 +5,5 @@
 -->
 <full-backup-content>
     <exclude domain="sharedpref" path="dleche_session_cookies.xml"/>
+    <exclude domain="sharedpref" path="dleche_order_alerts.xml"/>
 </full-backup-content>

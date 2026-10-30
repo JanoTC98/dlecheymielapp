@@ -6,8 +6,10 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="dleche_session_cookies.xml"/>
+        <exclude domain="sharedpref" path="dleche_order_alerts.xml"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="dleche_session_cookies.xml"/>
+        <exclude domain="sharedpref" path="dleche_order_alerts.xml"/>
     </device-transfer>
 </data-extraction-rules>

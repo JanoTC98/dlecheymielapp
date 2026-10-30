@@ -1,8 +1,12 @@
 package com.grupo4.dlecheymielapp
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -16,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -25,6 +30,8 @@ import com.grupo4.dlecheymielapp.data.auth.AuthRole
 import com.grupo4.dlecheymielapp.data.auth.SessionState
 import com.grupo4.dlecheymielapp.ui.admin.AdminHost
 import com.grupo4.dlecheymielapp.data.reminders.ReminderScope
+import com.grupo4.dlecheymielapp.notifications.OrderAlertNotifier
+import com.grupo4.dlecheymielapp.notifications.OrderAlertScheduler
 import com.grupo4.dlecheymielapp.ui.handler.FieldQueueHost
 import com.grupo4.dlecheymielapp.ui.handler.HandlerHost
 import com.grupo4.dlecheymielapp.ui.home.RoleHomeScreen
@@ -58,6 +65,26 @@ private fun AppRoot(container: AppContainer) {
     LaunchedEffect(Unit) { if (session is SessionState.Restoring) auth.restore() }
     // No ViewModel of a finished session may survive into the next one.
     LaunchedEffect(session is SessionState.SignedIn) { if (session !is SessionState.SignedIn) stores.clear() }
+
+    // New-order notifications run only while someone is signed in; signing out forgets what was announced to that device.
+    val context = LocalContext.current
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val signedIn = session is SessionState.SignedIn
+    val signedOut = session is SessionState.SignedOut
+    LaunchedEffect(signedIn, signedOut) {
+        when {
+            signedIn && BuildConfig.ORDER_ALERTS_ENABLED -> {
+                OrderAlertScheduler.schedule(context)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !OrderAlertNotifier.canNotify(context)) {
+                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            signedOut -> {
+                OrderAlertScheduler.cancel(context)
+                container.alertStore.clear()
+            }
+        }
+    }
 
     when (val current = session) {
         SessionState.Restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

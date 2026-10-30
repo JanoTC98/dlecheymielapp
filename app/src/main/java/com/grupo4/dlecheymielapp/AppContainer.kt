@@ -14,6 +14,9 @@ import com.grupo4.dlecheymielapp.data.reminders.RemindersApi
 import com.grupo4.dlecheymielapp.data.reminders.RemindersRepository
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerApi
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerRepository
+import com.grupo4.dlecheymielapp.notifications.NewWorkDetector
+import com.grupo4.dlecheymielapp.notifications.OrderAlertSource
+import com.grupo4.dlecheymielapp.notifications.SharedPreferencesSeenStore
 
 /** Hand-wired dependencies; one instance lives in [DLecheApp]. The API address comes from the build variant. */
 class AppContainer(context: Context) {
@@ -36,4 +39,11 @@ class AppContainer(context: Context) {
     val operatorRepository = DeliveryRepository(deliveryApi, network.json, DeliveryScope.OPERATOR)
 
     val remindersRepository = RemindersRepository(network.retrofit.create(RemindersApi::class.java), network.json)
+
+    // New-work notifications: the same queues the screens read, and the keys already announced to each user.
+    val alertStore = SharedPreferencesSeenStore(context)
+
+    val newWorkDetector = NewWorkDetector(alertStore)
+
+    val orderAlertSource = OrderAlertSource(adminRepository, handlerRepository, deliveryRepository, operatorRepository)
 }

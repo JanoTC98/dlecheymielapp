@@ -33,6 +33,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Background check (every 15 min, the platform minimum) that notifies a signed-in user of new work in their queue.
+        // Flip to false to ship without it; the foreground polling above is a separate switch.
+        buildConfigField("boolean", "ORDER_ALERTS_ENABLED", "true")
     }
 
     buildFeatures {

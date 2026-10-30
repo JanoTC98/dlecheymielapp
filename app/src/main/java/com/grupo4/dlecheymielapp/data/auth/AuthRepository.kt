@@ -21,6 +21,21 @@ class AuthRepository(private val network: NetworkModule, private val api: AuthAp
 
     fun clearExpiredNotice() { _sessionExpired.value = false }
 
+    /**
+     * The staff user the server recognises right now, or null. Unlike [restore] it never changes [session] or the stored
+     * cookie, so a background check that fails (offline, expired) cannot sign the user out behind the screens' back.
+     */
+    suspend fun currentStaffUser(): AuthUser? {
+        (_session.value as? SessionState.SignedIn)?.let { return it.user }
+        return try {
+            apiCall(network.json) { api.me() }.user.takeIf { it.role.isStaff }
+        } catch (e: ApiException) {
+            null
+        } catch (e: NetworkUnavailableException) {
+            null
+        }
+    }
+
     /** Called once at launch: reuses the stored session cookie if the server still accepts it. */
     suspend fun restore() {
         _session.value = try {
