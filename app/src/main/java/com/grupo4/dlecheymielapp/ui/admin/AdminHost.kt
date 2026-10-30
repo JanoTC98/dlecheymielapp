@@ -32,6 +32,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.grupo4.dlecheymielapp.data.admin.AdminRepository
 import com.grupo4.dlecheymielapp.data.reminders.ReminderScope
 import com.grupo4.dlecheymielapp.data.reminders.RemindersRepository
+import com.grupo4.dlecheymielapp.ui.common.QueuePollingEffect
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAB_ORDERS = 0
@@ -103,6 +104,7 @@ fun AdminHost(repository: AdminRepository, reminders: RemindersRepository, userN
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (tab) {
                     TAB_ORDERS -> {
+                        QueuePollingEffect { ordersVm.refresh() }
                         val state by ordersVm.state.collectAsState()
                         AdminOrdersScreen(
                             state, onRefresh = ordersVm::refresh, onStatus = ordersVm::setStatus,

@@ -19,6 +19,7 @@ import com.grupo4.dlecheymielapp.data.fulfillment.HandlerRepository
 import com.grupo4.dlecheymielapp.data.reminders.ReminderScope
 import com.grupo4.dlecheymielapp.data.reminders.RemindersRepository
 import com.grupo4.dlecheymielapp.data.reminders.UpcomingReminder
+import com.grupo4.dlecheymielapp.ui.common.QueuePollingEffect
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -57,6 +58,8 @@ fun HandlerHost(repository: HandlerRepository, reminders: RemindersRepository, o
         if (!firstResume.getAndSet(false)) { listVm.refresh(); groupVm?.load(quiet = true) }
         onPauseOrDispose {}
     }
+    // Only the list polls; an open order or group does not.
+    if (id == null && groupVm == null) QueuePollingEffect { listVm.refresh() }
 
     // The system Back and the in-app back share these, so both refresh the same way.
     // The list shows status and incident counts, so coming back refreshes it.
@@ -121,6 +124,7 @@ fun FieldQueueHost(
     val id = selectedId
     val closeOrder: () -> Unit = { selectedId = null; listVm.refresh() }
     if (id == null) {
+        QueuePollingEffect { listVm.refresh() }
         HandlerOrdersScreen(
             listState, listActions, listVm.cardActions, onRefresh = listVm::refresh, onOpenOrder = { selectedId = it }, onLogout = onLogout,
             eyebrow = eyebrow, title = title, subtitle = subtitle, emptyText = emptyText,
