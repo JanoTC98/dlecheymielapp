@@ -193,46 +193,6 @@ fun refundStatusLabel(raw: String): String = when (raw) {
 }
 
 @Serializable
-data class AdminMoney(val amount: Double = 0.0, val currency: String? = null)
-
-/** One priced line as it was sold. The snapshot has no product name: the names come from [AdminOrderDetail.items]. */
-@Serializable
-data class AdminPricedLine(val quantity: Int = 0, val subtotal: Double = 0.0)
-
-/** Prices stored with the order at sale time. Read as they were; never recomputed from the current tariff. */
-@Serializable
-data class AdminPricingSnapshot(
-    val items: List<AdminPricedLine> = emptyList(),
-    val total: Double? = null,
-    val currency: String? = null,
-    val internalDeliveryFee: AdminMoney? = null,
-)
-
-data class PriceLine(val quantity: Int, val name: String, val amount: Double)
-
-data class PriceBreakdown(val items: List<PriceLine>, val deliveryFee: Double?, val total: Double?)
-
-/** The breakdown the order was sold with, or null when the backend sent no snapshot. Amounts are never subtracted to derive a fee. */
-fun AdminOrderDetail.priceBreakdown(): PriceBreakdown? {
-    val pricing = pricingSnapshot ?: return null
-    // The snapshot has no names; they are taken from the item list only when both list the same lines in the same order.
-    val names = items.takeIf { it.size == pricing.items.size }?.map { it.name }
-    return PriceBreakdown(
-        items = pricing.items.mapIndexed { index, line -> PriceLine(line.quantity, names?.get(index) ?: "Artículo ${index + 1}", line.subtotal) },
-        deliveryFee = pricing.internalDeliveryFee?.amount,
-        total = pricing.total,
-    )
-}
-
-/** Labels for the backend's RefundStatus values. An unknown value is shown as it arrives. */
-fun refundStatusLabel(raw: String): String = when (raw) {
-    "refund_pending" -> "Solicitado o en curso"
-    "refunded" -> "Completado"
-    "refund_rejected" -> "Rechazado"
-    else -> raw
-}
-
-@Serializable
 data class AdminActor(val id: Long, val displayName: String)
 
 @Serializable
