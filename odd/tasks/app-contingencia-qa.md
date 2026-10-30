@@ -49,7 +49,7 @@ Routes: **P** = parent (Opus) inline; **H** = Haiku writer; **S** = Sonnet verif
 | T3 | S4 | H, isolated worktree, plus a parent release guard | T1 | none (flag off) | done (unit tests green; device check pending in T8) | `488f5f2`, `6e844af` |
 | T4 | S6, S9, S10 | H (unit "session & forms"), isolated worktree | T0 | item 2 (backup/credentials) → S verifier | done; verified (S6, S9, S10 pass); native review approved | `fc131f5`, `dc601d9`, `4d81ce8` (A1) |
 | T5 | S11 | H (unit "detail info"), isolated worktree, plus a parent fix | T2 | none | done (unit tests green; device check pending in T8) | `0a63e48`, `e1fe350`, `a4925b2` |
-| T6 | S12 | H, isolated worktree | T5 | none | in progress | — |
+| T6 | S12 | H, isolated worktree | T5 | none | done (unit tests green; device check pending in T8) | `3b3047d` |
 | T7 | S13 | H, isolated worktree, then S on the release APK | T1-T6 | item 5 (release build) → S verifier | in progress | — |
 | T8 | S7, S14 | S (device E2E via ADB) | T1-T7 | — | pending | — |
 
@@ -114,3 +114,6 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
   - Suite: 114 tests, 0 failures.
   - RDD assess `--base-ref dae1204`: risk medium, `review_due` false (`under_budget`); the slice stays pending.
 - **L17:** wave 3 launched, T6 (commercialSnapshot) and T7 (R8 release) on Haiku in isolated worktrees with disjoint surfaces.
+- **L18:** T6 cherry-picked (`3b3047d`). Suite: 121 tests, 0 failures.
+  - PACK and COMBO components show "qty × productName" plus their component `summary`; "Presentación:" shows when present.
+  - Gap reported **to the backend**: product-level `configuration` stores only ids (`group_<id>`/`option_<id>`, `SellableUnitCustomizationResolver.java:147,153`) with no labels in the commercial snapshot, so a customized single product cannot show its options until the backend adds a readable item-level summary.
