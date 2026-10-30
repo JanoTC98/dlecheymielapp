@@ -48,9 +48,9 @@ Routes: **P** = parent (Opus) inline; **H** = Haiku writer; **S** = Sonnet verif
 | T2 | S5 | H (unit "advance"), isolated worktree, plus a parent gap fix | T0 | item 4 (async/concurrency) → S verifier | done; verified (Sonnet: B1 fixed on recheck); native review approved | `59c08fd`, `5689de7`, `4d81ce8` |
 | T3 | S4 | H, isolated worktree, plus a parent release guard | T1 | none (flag off) | done (unit tests green; device check pending in T8) | `488f5f2`, `6e844af` |
 | T4 | S6, S9, S10 | H (unit "session & forms"), isolated worktree | T0 | item 2 (backup/credentials) → S verifier | done; verified (S6, S9, S10 pass); native review approved | `fc131f5`, `dc601d9`, `4d81ce8` (A1) |
-| T5 | S11 | H (unit "detail info"), isolated worktree | T2 | none | in progress | — |
-| T6 | S12 | H | T5 | none | pending | — |
-| T7 | S13 | H, then S on the release APK | T1-T6 | item 5 (release build) → S verifier | pending | — |
+| T5 | S11 | H (unit "detail info"), isolated worktree, plus a parent fix | T2 | none | done (unit tests green; device check pending in T8) | `0a63e48`, `e1fe350`, `a4925b2` |
+| T6 | S12 | H, isolated worktree | T5 | none | in progress | — |
+| T7 | S13 | H, isolated worktree, then S on the release APK | T1-T6 | item 5 (release build) → S verifier | in progress | — |
 | T8 | S7, S14 | S (device E2E via ADB) | T1-T7 | — | pending | — |
 
 **Parallel plan.** Wave 1 runs T1, T2 and T4 at once, with disjoint edit surfaces.
@@ -108,3 +108,9 @@ Wave 2 runs T3 and T5, wave 3 runs T6 and T7, and T8 closes.
   - Parent change `6e844af`: release hardcodes `QUEUE_POLLING_ENABLED=false`; only debug reads `dleche.queuePolling`.
   - Differential check: with the override set, debug gives `true` and release gives `false`; `local.properties` was restored.
   - Suite: 104 tests, 0 failures.
+- **L16:** T5 cherry-picked (`0a63e48`, `e1fe350`).
+  - Refund values found: `refund_pending`, `refunded`, `refund_rejected`.
+  - Parent fix `a4925b2`: the writer paired the unnamed `pricingSnapshot` lines with order items by position. RED test `eachLineKeepsItsOwnNameAndSubtotalEvenWhenTheSnapshotListsItemsInAnotherOrder` reproduced a wrong name next to a subtotal. The breakdown lines now come from the order's own items (name, quantity, subtotal); fee and total come from the snapshot. The unused `AdminPricedLine` was removed.
+  - Suite: 114 tests, 0 failures.
+  - RDD assess `--base-ref dae1204`: risk medium, `review_due` false (`under_budget`); the slice stays pending.
+- **L17:** wave 3 launched, T6 (commercialSnapshot) and T7 (R8 release) on Haiku in isolated worktrees with disjoint surfaces.
