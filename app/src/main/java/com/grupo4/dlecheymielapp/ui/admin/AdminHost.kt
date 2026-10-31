@@ -154,7 +154,7 @@ private fun OrderDetail(id: Long, repository: AdminRepository, onUnauthorized: (
             onAskRefund = vm::askRefund, onConfirmRefund = vm::confirmRefund,
             onAskRefundLostCharge = vm::askRefundLostCharge, onConfirmRefundLostCharge = vm::confirmRefundLostCharge,
             onRequestPaymentLink = vm::requestPaymentLink, onHidePaymentLink = vm::hidePaymentLink,
-            onOpenAssign = vm::openAssign, onChoose = vm::choose, onCloseDialog = vm::closeDialog,
+            onOpenAssign = vm::openAssign, onLoadAssignment = vm::loadAssignment, onChoose = vm::choose, onCloseDialog = vm::closeDialog,
         ),
     )
 }

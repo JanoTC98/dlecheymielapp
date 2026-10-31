@@ -100,6 +100,7 @@ class AdminOrderActions(
     val onRequestPaymentLink: () -> Unit,
     val onHidePaymentLink: () -> Unit,
     val onOpenAssign: () -> Unit,
+    val onLoadAssignment: () -> Unit,
     val onChoose: (AssignChoice) -> Unit,
     val onCloseDialog: () -> Unit,
 )
@@ -138,7 +139,9 @@ private fun Body(order: AdminOrderDetail, state: AdminOrderDetailState, next: Pa
         SummaryCard(order)
         StateCard(order, next, state.busy, actions)
         if (order.isPayOnDelivery && !order.status.isTerminal) PaymentCard(order, state, actions)
-        AssignmentCard(order, state.busy, actions)
+        // Read again after every write (the tick) so the card never shows a stale assignee.
+        LaunchedEffect(order.id, state.assignmentTick) { actions.onLoadAssignment() }
+        AssignmentCard(order, state.assignment, state.busy, actions)
         IncidentsCard(order, state.busy, actions)
         NotesCard(order, actions)
         HistoryCard(order)
@@ -267,12 +270,17 @@ private fun PaymentCard(order: AdminOrderDetail, state: AdminOrderDetailState, a
 }
 
 @Composable
-private fun AssignmentCard(order: AdminOrderDetail, busy: Boolean, actions: AdminOrderActions) {
+private fun AssignmentCard(order: AdminOrderDetail, assignment: AssignmentView?, busy: Boolean, actions: AdminOrderActions) {
     if (order.status.isTerminal) return
     val mode = order.fulfillmentSnapshot.mode
     if (mode != FulfillmentMode.INTERNAL_DELIVERY && mode != FulfillmentMode.DELIVERY) return
     SoftCard {
         Text(if (mode == FulfillmentMode.DELIVERY) "Destino del delivery" else "Encargado de entrega", style = MaterialTheme.typography.titleMedium)
+        when (assignment) {
+            is AssignmentView.Known -> Text("Actual: ${assignment.label}", style = MaterialTheme.typography.bodyMedium)
+            AssignmentView.Failed -> Text("No se pudo leer la asignación actual.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            AssignmentView.Loading, null -> Text("Cargando asignación…", style = MaterialTheme.typography.bodyMedium)
+        }
         OutlinedButton(onClick = actions.onOpenAssign, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
             Text(if (mode == FulfillmentMode.DELIVERY) "Elegir destino" else "Asignar o cambiar encargado")
         }
