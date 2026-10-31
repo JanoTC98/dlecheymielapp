@@ -1,12 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
     <!-- Brand tokens, same values as the nh color variables of the web theme. -->
-    <color name="nh_ink">#FF2D1E4A</color>
-    <color name="nh_violet">#FF6E508C</color>
-    <color name="nh_lila">#FFA981FE</color>
-    <color name="nh_lilac">#FFE0AFFF</color>
-    <color name="nh_mist">#FFF1D7FF</color>
     <color name="nh_background">#FFFBF7FF</color>
 </resources>
