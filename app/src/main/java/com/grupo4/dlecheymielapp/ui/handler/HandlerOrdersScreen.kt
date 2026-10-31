@@ -26,10 +26,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import java.time.Instant
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
@@ -95,7 +99,16 @@ fun HandlerOrdersScreen(
 private fun OrderBlocks(state: HandlerListState, actions: CardActionsState, callbacks: CardCallbacks, onOpenOrder: (Long) -> Unit) {
     var filter by rememberSaveable { mutableStateOf("") }
     val cards = state.orders.map { it to it.toCard() }
-    val readyNow = cards.count { (_, c) -> c.status == c.handoffStatus }
+    // The count depends on the clock: refresh it with every load and once a minute so a slot that starts with the screen open is counted.
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(state.lastUpdated) { now = Instant.now() }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            now = Instant.now()
+        }
+    }
+    val readyNow = cards.count { (_, c) -> c.isForDeliveryAt(now) }
     val shown = cards.filter { (_, c) ->
         filter.isBlank() || (c.code ?: "").contains(filter.trim().removePrefix("#"), ignoreCase = true) || c.name.contains(filter.trim(), ignoreCase = true)
     }
