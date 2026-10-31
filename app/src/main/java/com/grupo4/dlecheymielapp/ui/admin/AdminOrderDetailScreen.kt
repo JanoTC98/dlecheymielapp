@@ -438,6 +438,7 @@ private fun Dialogs(dialog: AdminDialog, state: AdminOrderDetailState, actions: 
                     OutlinedTextField(
                         value = state.noteText, onValueChange = actions.onNoteChange, minLines = 3,
                         label = { Text("Nota (solo la ven los administradores)") }, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { noteHint(state.noteText)?.let { Text(it) } },
                     )
                     Text("${state.noteText.length}/2000", style = MaterialTheme.typography.labelLarge)
                     state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }

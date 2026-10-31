@@ -70,6 +70,9 @@ sealed interface AssignmentView {
     data object Failed : AssignmentView
 }
 
+/** Why Guardar is disabled while the note is empty; null once there is text to save. */
+internal fun noteHint(text: String): String? = if (text.isBlank()) "Escriba la nota para poder guardarla." else null
+
 /** The label of a delivery destination, shared by the card and the assignment dialog. */
 internal fun destinationLabel(destination: DeliveryDestination): String = when (destination.destinationRole) {
     "DELIVERY" -> destination.employeeDisplayName ?: "Delivery interno"
