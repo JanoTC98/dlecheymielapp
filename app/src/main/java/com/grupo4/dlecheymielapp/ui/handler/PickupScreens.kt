@@ -199,7 +199,7 @@ private fun GroupOrders(
                 Text(pluralStringResource(R.plurals.pickup_pending_of_orders, group.orders.size, pending, group.orders.size), style = MaterialTheme.typography.titleMedium)
             }
         }
-        if (!group.hasReadyOrders) {
+        if (group.awaitsReadyOrders) {
             item(key = "wait") {
                 Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFFFF1CC), modifier = Modifier.fillMaxWidth()) {
                     Text(

@@ -262,6 +262,8 @@ class CardActions(
             try {
                 gateway.reportIncident(draft.orderId, text)
                 _state.update { it.copy(incident = null, notice = "Incidencia registrada. La administración fue avisada.") }
+                // The order is on hold now: a code error or message from before no longer describes it.
+                edit(draft.orderId) { it.copy(error = null, message = null) }
                 onChanged()
             } catch (e: Exception) {
                 handleAuth(e)

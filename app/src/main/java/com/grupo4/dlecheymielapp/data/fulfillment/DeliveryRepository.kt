@@ -59,11 +59,25 @@ private fun DeliverySummary.toWork() = HandlerOrderWork(
     customerName = districtName ?: "Delivery", incidentCount = incidentCount, payAtDelivery = payAtDelivery,
 )
 
+/**
+ * The address plus the district, without repeating the district when the address already ends with it ("..., Los Olivos").
+ * Only a trailing ", district" counts as a repeat, so a street or avenue that merely contains the name keeps every part.
+ */
+internal fun deliveryPlace(address: String?, district: String?): String {
+    val street = address?.trim().orEmpty()
+    val name = district?.trim().orEmpty()
+    if (name.isEmpty()) return street
+    if (street.isBlank()) return name
+    val withoutTail = street.trimEnd('.', ',', ';', ' ')
+    val repeated = withoutTail.equals(name, ignoreCase = true) || withoutTail.endsWith(", $name", ignoreCase = true)
+    return if (repeated) street else "$street, $name"
+}
+
 private fun DeliveryDetail.toWork() = HandlerOrderWork(
     id = id, publicCode = publicCode, status = status, mode = FulfillmentMode.DELIVERY, schedule = schedule,
     recipient = Recipient(
         name = customerName, phone = delivery.phone.orEmpty(),
-        place = listOfNotNull(delivery.address, delivery.districtName).filter { it.isNotBlank() }.joinToString(", "),
+        place = deliveryPlace(delivery.address, delivery.districtName),
         reference = delivery.reference,
     ),
     customerName = customerName, incidentCount = incidentCount, payAtDelivery = payAtDelivery,

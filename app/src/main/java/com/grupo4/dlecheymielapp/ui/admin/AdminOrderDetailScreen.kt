@@ -100,6 +100,7 @@ class AdminOrderActions(
     val onRequestPaymentLink: () -> Unit,
     val onHidePaymentLink: () -> Unit,
     val onOpenAssign: () -> Unit,
+    val onLoadAssignment: () -> Unit,
     val onChoose: (AssignChoice) -> Unit,
     val onCloseDialog: () -> Unit,
 )
@@ -138,7 +139,9 @@ private fun Body(order: AdminOrderDetail, state: AdminOrderDetailState, next: Pa
         SummaryCard(order)
         StateCard(order, next, state.busy, actions)
         if (order.isPayOnDelivery && !order.status.isTerminal) PaymentCard(order, state, actions)
-        AssignmentCard(order, state.busy, actions)
+        // Read again after every write (the tick) so the card never shows a stale assignee.
+        LaunchedEffect(order.id, state.assignmentTick) { actions.onLoadAssignment() }
+        AssignmentCard(order, state.assignment, state.busy, actions)
         IncidentsCard(order, state.busy, actions)
         NotesCard(order, actions)
         HistoryCard(order)
@@ -193,9 +196,12 @@ private fun SummaryCard(order: AdminOrderDetail) {
     }
 }
 
+/** The amount of a line is its subtotal (quantity included), not a unit price; the text says so. */
+internal fun purchaseLineValue(item: AdminOrderItem): String = "${item.name} · Subtotal: ${formatMoney(item.subtotal)}"
+
 @Composable
 private fun PurchaseLine(item: AdminOrderItem) {
-    LabeledRow("${item.quantity} ×", "${item.name} · ${formatMoney(item.subtotal)}")
+    LabeledRow("${item.quantity} ×", purchaseLineValue(item))
     item.preparationLines().forEach {
         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp))
     }
@@ -264,12 +270,17 @@ private fun PaymentCard(order: AdminOrderDetail, state: AdminOrderDetailState, a
 }
 
 @Composable
-private fun AssignmentCard(order: AdminOrderDetail, busy: Boolean, actions: AdminOrderActions) {
+private fun AssignmentCard(order: AdminOrderDetail, assignment: AssignmentView?, busy: Boolean, actions: AdminOrderActions) {
     if (order.status.isTerminal) return
     val mode = order.fulfillmentSnapshot.mode
     if (mode != FulfillmentMode.INTERNAL_DELIVERY && mode != FulfillmentMode.DELIVERY) return
     SoftCard {
         Text(if (mode == FulfillmentMode.DELIVERY) "Destino del delivery" else "Encargado de entrega", style = MaterialTheme.typography.titleMedium)
+        when (assignment) {
+            is AssignmentView.Known -> Text("Actual: ${assignment.label}", style = MaterialTheme.typography.bodyMedium)
+            AssignmentView.Failed -> Text("No se pudo leer la asignación actual.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            AssignmentView.Loading, null -> Text("Cargando asignación…", style = MaterialTheme.typography.bodyMedium)
+        }
         OutlinedButton(onClick = actions.onOpenAssign, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
             Text(if (mode == FulfillmentMode.DELIVERY) "Elegir destino" else "Asignar o cambiar encargado")
         }
@@ -427,6 +438,7 @@ private fun Dialogs(dialog: AdminDialog, state: AdminOrderDetailState, actions: 
                     OutlinedTextField(
                         value = state.noteText, onValueChange = actions.onNoteChange, minLines = 3,
                         label = { Text("Nota (solo la ven los administradores)") }, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { noteHint(state.noteText)?.let { Text(it) } },
                     )
                     Text("${state.noteText.length}/2000", style = MaterialTheme.typography.labelLarge)
                     state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -505,23 +517,30 @@ private fun Dialogs(dialog: AdminDialog, state: AdminOrderDetailState, actions: 
             onConfirm = actions.onAdvance, onDismiss = actions.onCloseDialog,
         )
 
-        is AdminDialog.Desist -> AlertDialog(
-            onDismissRequest = actions.onCloseDialog,
-            title = { Text("El cliente desistió") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("El pedido se cancela. ¿Se debe iniciar el reembolso completo?")
-                    state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-            },
-            confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = { actions.onConfirmDesist(true) }, enabled = !busy) { Text("Cancelar y reembolsar") }
-                    TextButton(onClick = { actions.onConfirmDesist(false) }, enabled = !busy) { Text("Cancelar sin reembolso") }
-                }
-            },
-            dismissButton = { TextButton(onClick = actions.onCloseDialog, enabled = !busy) { Text("Volver") } },
-        )
+        is AdminDialog.Desist -> {
+            val prompt = desistPrompt(paid = state.order?.isPaid == true)
+            AlertDialog(
+                onDismissRequest = actions.onCloseDialog,
+                title = { Text("El cliente desistió") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(prompt.text)
+                        state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }
+                },
+                confirmButton = {
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (prompt.canRefund) {
+                            TextButton(onClick = { actions.onConfirmDesist(true) }, enabled = !busy) { Text("Cancelar y reembolsar") }
+                            TextButton(onClick = { actions.onConfirmDesist(false) }, enabled = !busy) { Text("Cancelar sin reembolso") }
+                        } else {
+                            TextButton(onClick = { actions.onConfirmDesist(false) }, enabled = !busy) { Text("Cancelar pedido") }
+                        }
+                    }
+                },
+                dismissButton = { TextButton(onClick = actions.onCloseDialog, enabled = !busy) { Text("Volver") } },
+            )
+        }
 
         is AdminDialog.Assign -> AlertDialog(
             onDismissRequest = actions.onCloseDialog,

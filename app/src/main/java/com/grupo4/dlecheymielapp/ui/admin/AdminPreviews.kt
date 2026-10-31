@@ -79,7 +79,7 @@ private fun Framed(content: @Composable () -> Unit) = DLecheTheme { Surface(Modi
 private val noActions = AdminOrderActions(
     {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
     { _, _ -> }, {}, {}, {}, {}, {}, {}, {},
-    {}, {}, {}, {}, {},
+    {}, {}, {}, {}, {}, {},
 )
 
 @Preview(name = "Admin: pedidos", showBackground = true, widthDp = 360, heightDp = 780)

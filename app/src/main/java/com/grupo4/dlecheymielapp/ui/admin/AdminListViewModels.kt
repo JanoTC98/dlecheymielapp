@@ -144,6 +144,21 @@ class AdminGroupsViewModel(
     }
 }
 
+/** The message after moving a whole group, in agreement with the number of orders that moved and that did not. */
+internal fun advanceSummary(advanced: Int, skipped: Int): String {
+    val done = when (advanced) {
+        0 -> "No avanzó ningún pedido."
+        1 -> "Avanzó 1 pedido."
+        else -> "Avanzaron $advanced pedidos."
+    }
+    val left = when (skipped) {
+        0 -> ""
+        1 -> " 1 no se pudo mover."
+        else -> " $skipped no se pudieron mover."
+    }
+    return done + left
+}
+
 // ---------------------------------------------------------------- Asignaciones: un grupo
 
 data class AdminGroupDetailState(
@@ -199,8 +214,7 @@ class AdminGroupDetailViewModel(
         val (from, to, _) = nextStep(group) ?: return
         act(null) {
             val result = repository.advanceGroup(key, from, to)
-            val skipped = if (result.skipped.isEmpty()) "" else " ${result.skipped.size} no se pudieron mover."
-            "Avanzaron ${result.advanced.size} pedidos.$skipped"
+            advanceSummary(result.advanced.size, result.skipped.size)
         }
     }
 

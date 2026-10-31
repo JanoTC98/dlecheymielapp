@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.grupo4.dlecheymielapp.core.network.ApiException
 import com.grupo4.dlecheymielapp.data.admin.AdminOrderDetail
 import com.grupo4.dlecheymielapp.data.admin.AdminRepository
+import com.grupo4.dlecheymielapp.data.admin.DeliveryDestination
 import com.grupo4.dlecheymielapp.data.admin.IncidentCause
 import com.grupo4.dlecheymielapp.data.admin.RescheduleSlot
 import com.grupo4.dlecheymielapp.data.admin.excludingSlotOf
@@ -61,6 +62,31 @@ sealed interface AdminDialog {
     ) : AdminDialog
 }
 
+/** Who the order is assigned to, as the detail card shows it. */
+sealed interface AssignmentView {
+    data object Loading : AssignmentView
+    data class Known(val label: String) : AssignmentView
+    /** The read failed: never shown as "unassigned", which is a different fact. */
+    data object Failed : AssignmentView
+}
+
+/** What the "client desisted" dialog says and whether it may offer a refund: only a paid order has a charge to return. */
+internal data class DesistPrompt(val text: String, val canRefund: Boolean)
+
+internal fun desistPrompt(paid: Boolean): DesistPrompt =
+    if (paid) DesistPrompt("El pedido se cancela. ¿Se debe iniciar el reembolso completo?", canRefund = true)
+    else DesistPrompt("El pedido se cancela. No hay ningún cobro que reembolsar.", canRefund = false)
+
+/** Why Guardar is disabled while the note is empty; null once there is text to save. */
+internal fun noteHint(text: String): String? = if (text.isBlank()) "Escriba la nota para poder guardarla." else null
+
+/** The label of a delivery destination, shared by the card and the assignment dialog. */
+internal fun destinationLabel(destination: DeliveryDestination): String = when (destination.destinationRole) {
+    "DELIVERY" -> destination.employeeDisplayName ?: "Delivery interno"
+    "DELIVERY_COORDINATOR" -> "Operador"
+    else -> "Sin destino (entrega el Administrador)"
+}
+
 data class AdminOrderDetailState(
     val loading: Boolean = true,
     val order: AdminOrderDetail? = null,
@@ -72,6 +98,10 @@ data class AdminOrderDetailState(
     val dialog: AdminDialog? = null,
     /** Payment link waiting to be shared; the host clears it right away. It is a credential, never logged. */
     val paymentUrl: String? = null,
+    /** Null until [AdminOrderDetailViewModel.loadAssignment] runs (pickup orders are assigned by group and never load it). */
+    val assignment: AssignmentView? = null,
+    /** Bumped after every write so the screen reads the assignment again. */
+    val assignmentTick: Int = 0,
 )
 
 class AdminOrderDetailViewModel(
@@ -309,6 +339,29 @@ class AdminOrderDetailViewModel(
 
     // ---- Asignación ----
 
+    /** Reads who the order is assigned to, so the card shows it without opening the dialog. */
+    fun loadAssignment() {
+        val mode = _state.value.order?.fulfillmentSnapshot?.mode ?: return
+        if (mode != FulfillmentMode.INTERNAL_DELIVERY && mode != FulfillmentMode.DELIVERY) return
+        _state.update { it.copy(assignment = it.assignment ?: AssignmentView.Loading) }
+        viewModelScope.launch {
+            try {
+                val label = if (mode == FulfillmentMode.DELIVERY) {
+                    destinationLabel(repository.deliveryDestination(id))
+                } else {
+                    val handlerId = repository.orderAssignment(id).handlerId
+                    if (handlerId == null) "Sin encargado"
+                    else repository.orderCandidates(id).firstOrNull { it.id == handlerId }?.displayName ?: "Encargado #$handlerId"
+                }
+                _state.update { it.copy(assignment = AssignmentView.Known(label)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(assignment = AssignmentView.Failed) }
+            }
+        }
+    }
+
     /** Opens the assignment dialog that fits the order's modality; pickup orders are assigned by group. */
     fun openAssign() {
         val order = _state.value.order ?: return
@@ -359,12 +412,7 @@ class AdminOrderDetailViewModel(
                     }
                     add(AssignChoice("self", "Lo entrego yo (sin destino)", enabled = destination.destinationRole != null))
                 }
-                val currentLabel = when (destination.destinationRole) {
-                    "DELIVERY" -> destination.employeeDisplayName ?: "Delivery interno"
-                    "DELIVERY_COORDINATOR" -> "Operador"
-                    else -> "Sin destino (entrega el Administrador)"
-                }
-                updateAssign { it.copy(loading = false, choices = choices, current = currentLabel) }
+                updateAssign { it.copy(loading = false, choices = choices, current = destinationLabel(destination)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -404,7 +452,7 @@ class AdminOrderDetailViewModel(
             try {
                 block()
                 val order = repository.order(id)
-                _state.update { it.copy(busy = false, order = order, dialog = null, message = success, noteText = "") }
+                _state.update { it.copy(busy = false, order = order, dialog = null, message = success, noteText = "", assignmentTick = it.assignmentTick + 1) }
                 after?.invoke()
             } catch (e: CancellationException) {
                 throw e

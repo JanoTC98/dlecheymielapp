@@ -5,6 +5,8 @@ import com.grupo4.dlecheymielapp.data.fulfillment.FieldSchedule
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerOrderWork
 import com.grupo4.dlecheymielapp.data.fulfillment.IncidentStatus
+import com.grupo4.dlecheymielapp.data.fulfillment.PayAtDeliveryInfo
+import com.grupo4.dlecheymielapp.data.fulfillment.PaymentStatus
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -35,6 +37,23 @@ class OpenIncidentHandoffTest {
     fun aResolvedIncidentDoesNotHoldTheDelivery() {
         val state = OrderDetailState(order = order, incidents = listOf(incident(IncidentStatus.RESOLVED_REASSIGNED)))
         assertFalse(state.hasOpenIncident)
+        assertTrue(state.canHandoff)
+    }
+
+    private fun payOnDelivery(codeVerified: Boolean, payment: PaymentStatus) =
+        order.copy(payAtDelivery = PayAtDeliveryInfo(payment, codeVerified = codeVerified))
+
+    @Test
+    fun aCodeAlreadyValidatedWhilePaymentIsPendingIsNotAskedAgain() {
+        val state = OrderDetailState(order = payOnDelivery(codeVerified = true, payment = PaymentStatus.pending))
+        assertTrue(state.codeAlreadyValidated)
+        assertFalse(state.canHandoff)
+    }
+
+    @Test
+    fun anOnDeliveryOrderWhoseCodeIsNotValidatedYetStillAsksForIt() {
+        val state = OrderDetailState(order = payOnDelivery(codeVerified = false, payment = PaymentStatus.pending))
+        assertFalse(state.codeAlreadyValidated)
         assertTrue(state.canHandoff)
     }
 }

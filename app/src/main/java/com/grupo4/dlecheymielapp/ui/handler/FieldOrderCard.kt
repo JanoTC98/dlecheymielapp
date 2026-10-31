@@ -53,6 +53,11 @@ import com.grupo4.dlecheymielapp.data.fulfillment.FieldSchedule
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerOrderWork
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
+import java.time.DateTimeException
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 import com.grupo4.dlecheymielapp.data.fulfillment.PayAtDeliveryInfo
 import com.grupo4.dlecheymielapp.data.fulfillment.PaymentStatus
 import com.grupo4.dlecheymielapp.data.fulfillment.PickupGroupOrderWork
@@ -81,6 +86,26 @@ data class CardOrder(
 ) {
     /** The status in which the customer's code is asked: ready for pickup, or on its way for any delivery. */
     val handoffStatus: OrderStatus get() = if (mode == FulfillmentMode.PICKUP) OrderStatus.READY_FOR_PICKUP else OrderStatus.IN_TRANSIT
+}
+
+/** The business works in Lima; an order that does not carry its own zone is read in this one. */
+private val BUSINESS_ZONE: ZoneId = ZoneId.of("America/Lima")
+
+/**
+ * True when the order is in its handoff status and its slot has already started, so it can be delivered now.
+ * An order still open after its slot is overdue and keeps counting. A missing or unreadable slot cannot be dated,
+ * so only the status decides.
+ */
+fun CardOrder.isForDeliveryAt(now: Instant): Boolean {
+    if (status != handoffStatus) return false
+    val slot = schedule ?: return true
+    return try {
+        val zone = slot.timezone?.let(ZoneId::of) ?: BUSINESS_ZONE
+        val start = LocalDate.parse(slot.slotDate).atTime(LocalTime.parse(slot.startTime)).atZone(zone).toInstant()
+        !now.isBefore(start)
+    } catch (e: DateTimeException) {
+        true
+    }
 }
 
 fun HandlerOrderWork.toCard() = CardOrder(

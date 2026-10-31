@@ -42,4 +42,7 @@ data class PickupGroupWorkDetail(
 ) {
     /** Handing over is only possible while at least one order is ready. */
     val hasReadyOrders: Boolean get() = orders.any { it.status == OrderStatus.READY_FOR_PICKUP }
+
+    /** True while something is still waiting to become ready; a group with everything delivered or closed waits for nothing. */
+    val awaitsReadyOrders: Boolean get() = !hasReadyOrders && orders.any { !it.delivered && !it.status.isTerminal }
 }

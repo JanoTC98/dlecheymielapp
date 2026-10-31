@@ -184,6 +184,23 @@ class CardActionsTest {
     }
 
     @Test
+    fun aRegisteredIncidentClearsTheWrongCodeErrorOfThatCard() = runTest {
+        val gateway = FakeGateway().apply { handoff = { throw ApiException(400, "HANDOFF_CODE_INVALID", "x") } }
+        val actions = actions(gateway)
+        actions.onCode(7, "AAAAAA")
+        actions.validate(7)
+        advanceUntilIdle()
+        assertNotNull(actions.state.value.card(7).error)
+
+        actions.openIncident(7, "DLM-7")
+        actions.onIncidentText("Cliente ausente")
+        actions.submitIncident()
+        advanceUntilIdle()
+
+        assertNull("the order is on hold now: the old code error no longer applies", actions.state.value.card(7).error)
+    }
+
+    @Test
     fun emptyIncidentIsNotSent() = runTest {
         val gateway = FakeGateway()
         val actions = actions(gateway)

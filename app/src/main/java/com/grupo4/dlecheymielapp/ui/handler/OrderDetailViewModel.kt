@@ -76,7 +76,11 @@ data class OrderDetailState(
     /** The Administrator decides an open incident (reassign, refund, write off); until then the order cannot be handed over. */
     val hasOpenIncident: Boolean get() = incidents.any { it.status == IncidentStatus.OPEN }
 
-    val canHandoff: Boolean get() = order?.status == handoffStatus && !handoffBusy && !hasOpenIncident
+    /** An on-delivery order whose code was already accepted only waits for its payment; the code is not asked for again. */
+    val codeAlreadyValidated: Boolean
+        get() = order?.payAtDelivery?.let { it.codeVerified && it.paymentStatus != PaymentStatus.approved } == true
+
+    val canHandoff: Boolean get() = order?.status == handoffStatus && !handoffBusy && !hasOpenIncident && !codeAlreadyValidated
     val codeReady: Boolean get() = code.trim().isNotEmpty()
     val canReportIncident: Boolean get() = order?.status?.let { !it.isTerminal } == true
 
