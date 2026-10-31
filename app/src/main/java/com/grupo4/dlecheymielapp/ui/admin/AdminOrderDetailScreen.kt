@@ -193,9 +193,12 @@ private fun SummaryCard(order: AdminOrderDetail) {
     }
 }
 
+/** The amount of a line is its subtotal (quantity included), not a unit price; the text says so. */
+internal fun purchaseLineValue(item: AdminOrderItem): String = "${item.name} · Subtotal: ${formatMoney(item.subtotal)}"
+
 @Composable
 private fun PurchaseLine(item: AdminOrderItem) {
-    LabeledRow("${item.quantity} ×", "${item.name} · ${formatMoney(item.subtotal)}")
+    LabeledRow("${item.quantity} ×", purchaseLineValue(item))
     item.preparationLines().forEach {
         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp))
     }
