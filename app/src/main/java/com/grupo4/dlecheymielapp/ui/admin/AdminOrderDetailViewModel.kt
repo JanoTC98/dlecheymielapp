@@ -70,6 +70,13 @@ sealed interface AssignmentView {
     data object Failed : AssignmentView
 }
 
+/** What the "client desisted" dialog says and whether it may offer a refund: only a paid order has a charge to return. */
+internal data class DesistPrompt(val text: String, val canRefund: Boolean)
+
+internal fun desistPrompt(paid: Boolean): DesistPrompt =
+    if (paid) DesistPrompt("El pedido se cancela. ¿Se debe iniciar el reembolso completo?", canRefund = true)
+    else DesistPrompt("El pedido se cancela. No hay ningún cobro que reembolsar.", canRefund = false)
+
 /** Why Guardar is disabled while the note is empty; null once there is text to save. */
 internal fun noteHint(text: String): String? = if (text.isBlank()) "Escriba la nota para poder guardarla." else null
 

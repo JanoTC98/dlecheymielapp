@@ -517,23 +517,30 @@ private fun Dialogs(dialog: AdminDialog, state: AdminOrderDetailState, actions: 
             onConfirm = actions.onAdvance, onDismiss = actions.onCloseDialog,
         )
 
-        is AdminDialog.Desist -> AlertDialog(
-            onDismissRequest = actions.onCloseDialog,
-            title = { Text("El cliente desistió") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("El pedido se cancela. ¿Se debe iniciar el reembolso completo?")
-                    state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-            },
-            confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = { actions.onConfirmDesist(true) }, enabled = !busy) { Text("Cancelar y reembolsar") }
-                    TextButton(onClick = { actions.onConfirmDesist(false) }, enabled = !busy) { Text("Cancelar sin reembolso") }
-                }
-            },
-            dismissButton = { TextButton(onClick = actions.onCloseDialog, enabled = !busy) { Text("Volver") } },
-        )
+        is AdminDialog.Desist -> {
+            val prompt = desistPrompt(paid = state.order?.isPaid == true)
+            AlertDialog(
+                onDismissRequest = actions.onCloseDialog,
+                title = { Text("El cliente desistió") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(prompt.text)
+                        state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }
+                },
+                confirmButton = {
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (prompt.canRefund) {
+                            TextButton(onClick = { actions.onConfirmDesist(true) }, enabled = !busy) { Text("Cancelar y reembolsar") }
+                            TextButton(onClick = { actions.onConfirmDesist(false) }, enabled = !busy) { Text("Cancelar sin reembolso") }
+                        } else {
+                            TextButton(onClick = { actions.onConfirmDesist(false) }, enabled = !busy) { Text("Cancelar pedido") }
+                        }
+                    }
+                },
+                dismissButton = { TextButton(onClick = actions.onCloseDialog, enabled = !busy) { Text("Volver") } },
+            )
+        }
 
         is AdminDialog.Assign -> AlertDialog(
             onDismissRequest = actions.onCloseDialog,
