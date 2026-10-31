@@ -240,6 +240,11 @@ private fun HandoffCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
 
+            state.codeAlreadyValidated -> Text(
+                "El código ya fue validado. El pedido se cerrará cuando el pago contra entrega esté aprobado.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
             state.hasOpenIncident -> Text(
                 "Este pedido tiene una incidencia abierta. La administración la resuelve (reasigna, reembolsa o la da por perdida); " +
                     "mientras tanto no se puede registrar la entrega.",
