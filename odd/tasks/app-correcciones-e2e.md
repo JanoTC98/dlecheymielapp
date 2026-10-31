@@ -31,18 +31,20 @@ Source of truth: `plan_app.md` (tasks M-01..M-12) and `docs/INFORME_E2E_DLECHE.m
 
 ## Tasks
 
-Route: all inline (each unit is small and understood; no writer trigger holds). `[ ]` open, `[x]` done with observed outcome.
+Route: all inline (each unit is small and understood; no writer trigger held). Evidence for each device check is in `~/Escritorio/informe_tecnico_app/05_verificacion_correcciones/`.
 
-- [x] **T1** S1 · inline · Manifest permission + regression test · RED: `AssertionError` at `ManifestPermissionsTest.kt:16` on the original manifest; GREEN: 1 test, 0 failures · commit: see L7
-- [ ] **T2** S2 · inline · Hide the code form when `codeVerified` · commit: —
-- [ ] **T3** S3 · inline · Clear obsolete errors after an incident · commit: —
-- [ ] **T4** S4 · inline · "Para entregar ahora" by slot · commit: —
-- [ ] **T5** S5 · inline · Line subtotal label · commit: —
-- [ ] **T6** S6 · inline · Current assignment in the admin detail · commit: —
-- [ ] **T7** S7 · inline · Empty note feedback · commit: —
-- [ ] **T8** S8 · inline · Duplicated district in the address · commit: —
-- [ ] **T9** S9, S10 · inline · Notice after delivery, plural, discount display · commit: —
-- [ ] **T10** closure · inline · full suite, release build check, device pass, update `docs/` and the technical report · commit: —
+- [x] **T1** S1 · inline · Manifest permission + regression test · RED: `AssertionError` at `ManifestPermissionsTest.kt:16` on the original manifest; GREEN · commit `8b14b6c`
+- [x] **T2** S2 · inline · Hide the code form when `codeVerified` · RED: unresolved `codeAlreadyValidated`; GREEN; device: detail of a validated order has no code field or Validar entrega button · commit `af000ff`
+- [x] **T3** S3 · inline · Clear the stale code error after an incident · RED: `AssertionError` at `CardActionsTest.kt:187` without the fix; GREEN; device: wrong code then incident, the red error is gone · commit `a38432d`
+- [x] **T4** S4 · inline · "Para entregar ahora" by slot (America/Lima) · RED: unresolved `isForDeliveryAt`; GREEN 7 tests; device: counter shows 0 with two future-slot orders (it showed 2) · commit `309c9b1`
+- [x] **T5** S5 · inline · Line subtotal label · RED: unresolved `purchaseLineValue`; GREEN; device: "Subtotal: S/ 58.00" · commit `8dab01c`
+- [x] **T6** S6 · inline · Current assignee in the admin detail · RED: unresolved `loadAssignment`; GREEN 6 tests; device: "Actual: Operador" without opening the dialog · commit `3819b1f`
+- [x] **T7** S7 · inline · Empty note hint · RED: unresolved `noteHint`; GREEN; device: "Escriba la nota para poder guardarla." · commit `848f118`
+- [x] **T8** S8 · inline · Duplicated district in the address · RED: unresolved `deliveryPlace`; GREEN 5 tests; device: address composed once ("Av. Perú 500, SMP, San Martín de Porres"); the exact duplicated case is covered by the unit test only · commit `0ccf748`
+- [x] **T9** S9 · inline · Waiting notice after delivery and plural · RED: unresolved `awaitsReadyOrders` and `advanceSummary`; GREEN; device: no notice at "0 de 1 pedido pendiente", message "Avanzó 1 pedido." · commit `1b90f50`
+- [ ] **T9b** S10 · APP-12 discount display · not implemented: the order snapshot carries no discount or original price, so it cannot be shown without inventing it. Requested from the backend (see `ISSUES_BACKEND_WEB.md`).
+- [x] **T11** APP-11 (added after verification) · inline · No refund offer for an unpaid order · RED: unresolved `desistPrompt`; GREEN; device: "No hay ningún cobro que reembolsar" and one action "Cancelar pedido" · commit `b1f6e34`
+- [x] **T10** closure · inline · full suite 174 tests, 0 failures; `lintDebug` and `assembleDebug` pass; `assembleRelease` passes and the merged release manifest declares the permission once; device pass on the four roles with captures · commit: this document
 
 ## Log
 
@@ -53,3 +55,10 @@ Route: all inline (each unit is small and understood; no writer trigger holds). 
 - **L5 (2026-10-31):** The E2E also showed that the repository had no test that would catch APP-01 (the crash happens at first launch). T1 adds one.
 - **L6 (2026-10-31):** APP-07 (provider phone `abc`) was a false positive of the first E2E pass; verified on the phone: invalid value shows "Use el formato +51987654321" and is not sent, a valid one saves with "Proveedor guardado.".
 - **L7 (2026-10-31):** T1 done. `ManifestPermissionsTest` pins that the alert job keeps its connectivity constraint (`setRequiredNetworkType` in `OrderAlertService.kt`) and that the manifest declares `ACCESS_NETWORK_STATE` exactly once. Device evidence from the E2E: with the permission, admin, operador, encargado and delivery all reach their home screen and restore the session after a restart. Not done here: clean-install vs update matrix of M-01 (to repeat in T10).
+- **L8 (2026-10-31, user, verbatim):** "termina las implementaciones y haces las pruebas correspondientes. conmtinua"
+- **L9 (2026-10-31):** T2..T9 implemented test first (RED observed as a compile error for new API, or as an assertion where the API already existed: T3 confirmed by reverting `CardActions.kt` for one run). Each commit stages only its task files; the local changes of L3 were not touched.
+- **L10 (2026-10-31):** T7 correction of understanding: the Guardar button was already disabled for an empty note (the plan said the ViewModel returned silently); the missing piece was the reason, so the fix is a visible hint, not a new guard.
+- **L11 (2026-10-31):** Added T11 after confirming APP-11 in code: `Desist` dialog asked about a refund regardless of payment. The fix keys on `order.isPaid`.
+- **L12 (2026-10-31):** Not implemented, with the reason: APP-12 (no discount data in the snapshot, backend); APP-10 and M-10 (business decision); SEC-01, M-11, F-10 (backend contracts); M-12.1 cookie encryption (P3, key-loss risk, decision pending); M-06 closed as not reproduced; history events of assignments (backend B-03).
+- **L13 (2026-10-31):** Test data created on the server for the device pass: orders 28-35, QA catalog (combos, packs, promotions), incidents on orders 17 and 35, order 17 left with an open incident, order 33 delivered, order 28 delivered.
+- **L14 (2026-10-31):** Risk: none for T1..T11 (no migration, auth, public API, concurrency or delivery change; the new `AdminOrderActions.onLoadAssignment` is internal to the app). Shared-code check: `CardOrder.handoffStatus` and `PickupGroupWorkDetail.hasReadyOrders` keep their behavior; `canHandoff` now also requires `!codeAlreadyValidated`, covered by `OpenIncidentHandoffTest`.
