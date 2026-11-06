@@ -28,6 +28,11 @@ import kotlinx.coroutines.launch
 
 const val MAX_INCIDENT_LENGTH = 2000
 
+/** What the incident dialog says first. An order with an open incident gets a warning: every report opens another one. */
+internal fun incidentIntro(hasOpenIncident: Boolean): String =
+    if (hasOpenIncident) "Este pedido ya tiene una incidencia abierta. Si es el mismo problema, no hace falta reportarlo otra vez; si es distinto, descríbalo."
+    else "Cuente qué pasó (cliente ausente, dirección incorrecta, no contesta…)."
+
 data class OrderDetailState(
     val loading: Boolean = true,
     val order: HandlerOrderWork? = null,

@@ -331,7 +331,7 @@ private fun IncidentDialog(state: OrderDetailState, onClose: () -> Unit, onTextC
         title = { Text("Reportar incidencia") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Cuente qué pasó (cliente ausente, dirección incorrecta, no contesta…).", style = MaterialTheme.typography.bodyMedium)
+                Text(incidentIntro(state.hasOpenIncident), style = MaterialTheme.typography.bodyMedium)
                 val counter = "${state.incidentText.length}/$MAX_INCIDENT_LENGTH"
                 OutlinedTextField(
                     value = state.incidentText,
