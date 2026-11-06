@@ -42,7 +42,13 @@ private class DetailGateway : FieldGateway {
         )
     }
 
-    override suspend fun incidents(id: Long): List<FieldIncident> = emptyList()
+    var incidentList: List<FieldIncident> = emptyList()
+    var incidentsError: Exception? = null
+
+    override suspend fun incidents(id: Long): List<FieldIncident> {
+        incidentsError?.let { throw it }
+        return incidentList
+    }
     override suspend fun handoff(id: Long, code: String): HandoffResult = HandoffResult(1, OrderStatus.DELIVERED)
     override suspend fun reportIncident(id: Long, description: String): FieldIncident = error("not used")
     override suspend fun paymentLink(id: Long): String = error("not used")
@@ -64,6 +70,39 @@ class OrderDetailViewModelTest {
 
     @After
     fun tearDown() = Dispatchers.resetMain()
+
+    private val incident = FieldIncident(id = 7, orderId = 1, description = "Cliente ausente", recordedAt = "2026-11-06T00:42:00")
+
+    @Test
+    fun anIncidentListThatCannotBeReadIsReportedInsteadOfShownAsEmpty() = runTest(dispatcher) {
+        val gateway = DetailGateway().apply { incidentList = listOf(incident) }
+        val vm = OrderDetailViewModel(1, gateway) {}
+        advanceUntilIdle()
+        assertEquals(listOf(incident), vm.state.value.incidents)
+        assertFalse(vm.state.value.incidentsLoadFailed)
+
+        gateway.incidentsError = java.io.IOException("offline")
+        vm.load()
+        advanceUntilIdle()
+
+        // The last list that was read stays on screen and the failure is flagged; the order itself still loads.
+        assertEquals(listOf(incident), vm.state.value.incidents)
+        assertTrue(vm.state.value.incidentsLoadFailed)
+        assertEquals(null, vm.state.value.loadError)
+
+        gateway.incidentsError = null
+        vm.load()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.incidentsLoadFailed)
+    }
+
+    @Test
+    fun aSuccessfullyReadEmptyIncidentListIsNotAFailure() = runTest(dispatcher) {
+        val vm = OrderDetailViewModel(1, DetailGateway()) {}
+        advanceUntilIdle()
+        assertTrue(vm.state.value.incidents.isEmpty())
+        assertFalse(vm.state.value.incidentsLoadFailed)
+    }
 
     @Test
     fun aNormalSingleAdvanceStillWorks() = runTest(dispatcher) {

@@ -50,6 +50,7 @@ import com.grupo4.dlecheymielapp.ui.common.PayBadge
 import com.grupo4.dlecheymielapp.ui.common.SoftCard
 import com.grupo4.dlecheymielapp.ui.common.StatusPill
 import com.grupo4.dlecheymielapp.ui.common.formatSlotDate
+import com.grupo4.dlecheymielapp.ui.common.formatTimestamp
 import com.grupo4.dlecheymielapp.ui.common.whatsappUrl
 
 @Composable
@@ -298,7 +299,10 @@ private fun IncidentsCard(state: OrderDetailState, onOpen: () -> Unit) {
         if (state.canReportIncident) {
             OutlinedButton(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("Reportar incidencia") }
         }
-        if (state.incidents.isEmpty()) {
+        if (state.incidentsLoadFailed) {
+            Text("No se pudo actualizar la lista de incidencias. Se muestra la última que se cargó.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        }
+        if (state.incidents.isEmpty() && !state.incidentsLoadFailed) {
             Text("No hay incidencias registradas.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             state.incidents.forEach { IncidentRow(it) }
@@ -313,7 +317,7 @@ private fun IncidentRow(incident: FieldIncident) {
             Text(incident.status.label, style = MaterialTheme.typography.titleMedium)
             Text(incident.description, style = MaterialTheme.typography.bodyMedium)
             Text(
-                listOfNotNull(incident.reporterName, incident.recordedAt.take(16).replace('T', ' ')).joinToString(" · "),
+                listOfNotNull(incident.reporterName, formatTimestamp(incident.recordedAt)).joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

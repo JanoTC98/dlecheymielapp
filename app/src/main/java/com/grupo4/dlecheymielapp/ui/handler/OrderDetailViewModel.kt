@@ -46,6 +46,8 @@ data class OrderDetailState(
     val incidentBusy: Boolean = false,
     val incidentError: String? = null,
     val incidentSaved: Boolean = false,
+    /** The incident list could not be read: the screen must not claim there are none. */
+    val incidentsLoadFailed: Boolean = false,
 
     val linkBusy: Boolean = false,
     val linkError: String? = null,
@@ -113,11 +115,20 @@ class OrderDetailViewModel(
         _state.update { it.copy(loading = it.order == null, loadError = null) }
         try {
             val order = gateway.order(orderId)
-            val incidents = runCatching { gateway.incidents(orderId) }.getOrDefault(emptyList())
+            var incidentsFailed = false
+            // A failed read keeps the last list and says so; it never turns into "no incidents".
+            val incidents = try {
+                gateway.incidents(orderId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                incidentsFailed = true
+                _state.value.incidents
+            }
             val provider = if (gateway.capabilities.canRegisterProvider) runCatching { gateway.provider(orderId) }.getOrNull() else null
             _state.update {
                 it.copy(
-                    loading = false, order = order, incidents = incidents,
+                    loading = false, order = order, incidents = incidents, incidentsLoadFailed = incidentsFailed,
                     // Once the payment is approved or the order is closed the link is of no use: forget it.
                     paymentUrl = it.paymentUrl.takeUnless { _ -> order.status.isTerminal || order.payAtDelivery?.paymentStatus == PaymentStatus.approved },
                     // Keep what the user is typing; fill the fields only the first time.
