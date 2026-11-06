@@ -7,10 +7,12 @@ import com.grupo4.dlecheymielapp.data.admin.title
 import com.grupo4.dlecheymielapp.data.auth.AuthRole
 import com.grupo4.dlecheymielapp.data.auth.AuthUser
 import com.grupo4.dlecheymielapp.data.fulfillment.DeliveryRepository
+import com.grupo4.dlecheymielapp.data.fulfillment.FieldSchedule
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerOrderWork
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerRepository
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerType
 import com.grupo4.dlecheymielapp.data.fulfillment.OrderStatus
+import com.grupo4.dlecheymielapp.ui.common.formatSlotDate
 
 /** One thing worth telling the user about. [key] identifies it across checks, so the same work is never announced twice. */
 data class AlertItem(val key: String, val title: String, val text: String)
@@ -58,6 +60,9 @@ class SharedPreferencesSeenStore(context: Context) : SeenStore {
     }
 }
 
+/** The slot as the rest of the app writes it: "Viernes 6 de noviembre · 10:00 – 11:00". */
+internal fun alertSlotText(schedule: FieldSchedule): String = "${formatSlotDate(schedule.slotDate)} · ${schedule.timeRange}"
+
 /**
  * Lists, for each role, the work that should raise a notification when it appears. It reads the same queues the screens
  * read, so what the notification announces is what the user finds when opening the app.
@@ -79,7 +84,7 @@ class OrderAlertSource(
     /** New paid orders waiting to be prepared, plus the incident notices the bell shows as unread. */
     private suspend fun adminItems(): List<AlertItem> {
         val orders = admin.orders(OrderFilters(status = OrderStatus.CONFIRMED)).items.map {
-            AlertItem("order:${it.id}", "Nuevo pedido", "${it.publicCode ?: "Pedido #${it.id}"} · ${it.schedule.slotDate} ${it.schedule.timeRange}")
+            AlertItem("order:${it.id}", "Nuevo pedido", "${it.publicCode ?: "Pedido #${it.id}"} · ${alertSlotText(it.schedule)}")
         }
         val notices = admin.notifications(unreadOnly = true).map {
             AlertItem("notice:${it.id}", it.title(), listOfNotNull(it.orderPublicCode ?: "Pedido #${it.orderId}", it.summary.takeIf(String::isNotBlank)).joinToString(" · "))
@@ -93,7 +98,7 @@ class OrderAlertSource(
             // The count is part of the key: orders added to a group already assigned are news too.
             handler.pickupGroups().map {
                 val place = listOfNotNull(it.pickupPoint.name, it.university.name).joinToString(" · ")
-                AlertItem("group:${it.groupKey}:${it.orderCount}", "Pedidos de recojo asignados", "$place · ${it.schedule.slotDate} ${it.schedule.timeRange} · ${it.orderCount} pedido(s)")
+                AlertItem("group:${it.groupKey}:${it.orderCount}", "Pedidos de recojo asignados", "$place · ${alertSlotText(it.schedule)} · ${it.orderCount} pedido(s)")
             }
         } else {
             queueItems(handler.orders(), "Nuevo pedido asignado")
@@ -101,6 +106,6 @@ class OrderAlertSource(
 
     private fun queueItems(orders: List<HandlerOrderWork>, title: String): List<AlertItem> =
         orders.filterNot { it.status.isTerminal }.map {
-            AlertItem("order:${it.id}", title, "${it.publicCode ?: "Pedido #${it.id}"} · ${it.schedule.slotDate} ${it.schedule.timeRange}")
+            AlertItem("order:${it.id}", title, "${it.publicCode ?: "Pedido #${it.id}"} · ${alertSlotText(it.schedule)}")
         }
 }
