@@ -33,6 +33,7 @@ release-mappings/
 .idea/deploymentTargetSelector.xml
 .idea/deviceManager.xml
 .idea/.name
+.idea/vcs.xml
 .idea/misc.xml.bak
 out/
 *.ipr
