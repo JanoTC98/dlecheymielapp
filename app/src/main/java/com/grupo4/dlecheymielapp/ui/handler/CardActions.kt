@@ -122,6 +122,9 @@ object NoCardCallbacks : CardCallbacks {
     override fun refreshPayment() = Unit
 }
 
+/** Said when an order closes from a list; it is the list's notice because the closed card may leave the queue. */
+const val DELIVERED_NOTICE = "Pedido entregado."
+
 /** Said once after a valid code on an order paid at delivery: the order closes only when the payment is approved. */
 const val AWAITING_PAYMENT_MESSAGE = "Código validado. El pedido se cerrará cuando el pago contra entrega esté aprobado."
 
@@ -171,12 +174,13 @@ class CardActions(
             var reload = true
             try {
                 val result = gateway.handoff(id, code)
-                val message = if (result.awaitingPayment) {
-                    AWAITING_PAYMENT_MESSAGE
+                if (result.awaitingPayment) {
+                    edit(id) { it.copy(code = "", message = AWAITING_PAYMENT_MESSAGE) }
                 } else {
-                    "Pedido entregado."
+                    // The order is closed and may leave the queue: its card would take the message away with it.
+                    edit(id) { it.copy(code = "") }
+                    _state.update { it.copy(notice = DELIVERED_NOTICE) }
                 }
-                edit(id) { it.copy(code = "", message = message) }
             } catch (e: Exception) {
                 handleAuth(e)
                 edit(id) { it.copy(error = e.toHandoffMessage()) }
@@ -236,7 +240,7 @@ class CardActions(
             var reload = true
             try {
                 gateway.complete(id)
-                edit(id) { it.copy(message = "Pedido entregado.") }
+                _state.update { it.copy(notice = DELIVERED_NOTICE) }
             } catch (e: Exception) {
                 handleAuth(e)
                 edit(id) { it.copy(error = e.toHandoffMessage()) }

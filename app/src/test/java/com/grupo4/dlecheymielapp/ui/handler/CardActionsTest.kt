@@ -78,7 +78,9 @@ class CardActionsTest {
         advanceUntilIdle()
 
         val card = actions.state.value.card(1)
-        assertEquals("Pedido entregado.", card.message)
+        // The card may leave the queue once the order closes, so the confirmation lives in the list's notice.
+        assertEquals("Pedido entregado.", actions.state.value.notice)
+        assertNull(card.message)
         assertEquals("", card.code)
         assertFalse(card.busy)
         assertEquals(1, changes)
@@ -357,7 +359,8 @@ class CardActionsTest {
 
         assertEquals(1, gateway.completeCalls)
         assertNull(actions.state.value.completeFor)
-        assertEquals("Pedido entregado.", actions.state.value.card(8).message)
+        assertEquals("Pedido entregado.", actions.state.value.notice)
+        assertNull(actions.state.value.card(8).message)
     }
 
     private fun payable(linkAvailable: Boolean = true) = CardOrder(
