@@ -3,6 +3,7 @@ package com.grupo4.dlecheymielapp.core.network
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -20,7 +21,7 @@ class NetworkModule(
         coerceInputValues = true
     }
 
-    val cookieJar = PersistentCookieJar(storage)
+    val cookieJar = PersistentCookieJar(storage, baseUrl.toHttpUrl())
 
     private val seedClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
