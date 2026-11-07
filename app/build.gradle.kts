@@ -1,4 +1,15 @@
 import java.util.Properties
+import java.io.File
+
+abstract class ValidateReleaseSigning : DefaultTask() {
+    @get:Input abstract val configured: Property<Boolean>
+    @get:Input @get:Optional abstract val keystorePath: Property<String>
+
+    @TaskAction fun validate() {
+        check(configured.get()) { "Configure keystore.properties or DLECHE_KEYSTORE_* / DLECHE_KEY_* before building release." }
+        check(File(keystorePath.get()).isFile) { "Release keystore file does not exist." }
+    }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -18,6 +29,21 @@ val releaseApiUrl = localProperties.getProperty("dleche.releaseApiUrl") ?: "http
 // Foreground polling of the operational queues stays off until the backend closes M3. Debug builds can enable it locally with
 // dleche.queuePolling=true; release builds ignore it.
 val queuePollingEnabled = localProperties.getProperty("dleche.queuePolling")?.toBoolean() ?: false
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun signingValue(property: String, environment: String): String? =
+    providers.environmentVariable(environment).orNull ?: keystoreProperties.getProperty(property)
+val releaseStore = signingValue("storeFile", "DLECHE_KEYSTORE_FILE")
+val releaseStorePassword = signingValue("storePassword", "DLECHE_KEYSTORE_PASSWORD")
+val releaseAlias = signingValue("keyAlias", "DLECHE_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "DLECHE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(releaseStore, releaseStorePassword, releaseAlias, releaseKeyPassword).all { !it.isNullOrBlank() }
+val validateReleaseSigning = tasks.register<ValidateReleaseSigning>("validateReleaseSigning") {
+    configured.set(hasReleaseSigning)
+    releaseStore?.let { keystorePath.set(rootProject.file(it).absolutePath) }
+}
 
 android {
     namespace = "com.grupo4.dlecheymielapp"
@@ -29,8 +55,8 @@ android {
         applicationId = "com.grupo4.dlecheymielapp"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Live tests mutate disposable demo orders and require explicit credentials/fixtures at invocation time.
@@ -46,6 +72,15 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) create("release") {
+            storeFile = rootProject.file(requireNotNull(releaseStore))
+            storePassword = releaseStorePassword
+            keyAlias = releaseAlias
+            keyPassword = releaseKeyPassword
+        }
+    }
+
     buildTypes {
         debug {
             // Local backend (Docker compose). HTTP is only allowed here, see src/debug/res/xml/network_security_config.xml.
@@ -57,6 +92,7 @@ android {
             buildConfigField("int", "QUEUE_POLLING_SECONDS", "60")
         }
         release {
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             // Published API. Do not point a release build at it until the server runs the current backend.
             buildConfigField("String", "API_BASE_URL", "\"$releaseApiUrl\"")
             // Must mirror CAPTCHA_ENABLED on the server; when true the login needs the Turnstile WebView (not built yet).
@@ -110,6 +146,10 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation(libs.okhttp.mockwebserver)
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild") dependsOn(validateReleaseSigning)
 }
 
 // Copies the release R8 mapping.txt to app/release-mappings/<versionCode>/ (git-ignored) so crash stack traces from
