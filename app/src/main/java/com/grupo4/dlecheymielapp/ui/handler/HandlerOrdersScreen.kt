@@ -71,6 +71,8 @@ fun HandlerOrdersScreen(
 ) {
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         BrandHeader(eyebrow, title, subtitle ?: state.profile?.displayName, onLogout)
+        // Action feedback must remain visible even when the acted-on card is far down the queue or disappears.
+        actions.notice?.let { SuccessBanner(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), onDismiss = callbacks::dismissNotice) }
 
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -81,7 +83,6 @@ fun HandlerOrdersScreen(
                     state.error != null && state.orders.isEmpty() -> CenteredMessage(state.error, actionLabel = "Actualizar", onAction = onRefresh)
 
                     state.orders.isEmpty() -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                        actions.notice?.let { SuccessBanner(it, Modifier.padding(16.dp), onDismiss = callbacks::dismissNotice) }
                         RemindersCard(state.reminders, Modifier.padding(16.dp))
                         EmptyState(emptyText)
                         RefreshButton(onRefresh)
@@ -119,7 +120,6 @@ private fun OrderBlocks(state: HandlerListState, actions: CardActionsState, call
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        actions.notice?.let { notice -> item(key = "notice") { SuccessBanner(notice, onDismiss = callbacks::dismissNotice) } }
         state.error?.let { item(key = "error") { ErrorText(it) } }
         item(key = "freshness") { FreshnessNotice(state.lastUpdated, state.stale) }
         item(key = "stats") {
@@ -127,7 +127,7 @@ private fun OrderBlocks(state: HandlerListState, actions: CardActionsState, call
                 listOf(
                     Stat("Pedidos", state.orders.size),
                     Stat("Para entregar ahora", readyNow),
-                    Stat("Con incidencia", state.orders.count { it.incidentCount > 0 }),
+                    Stat("Con incidencia", state.orders.count { it.openIncidentCount > 0 }),
                 ),
             )
         }

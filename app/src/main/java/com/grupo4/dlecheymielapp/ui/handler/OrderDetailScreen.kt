@@ -224,6 +224,7 @@ private fun HandoffCard(
     onSubmit: () -> Unit,
     onAskComplete: (Boolean) -> Unit,
 ) {
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     SoftCard {
         Text("Entrega", style = MaterialTheme.typography.titleMedium)
         state.handoffSuccess?.let { SuccessText(it) }
@@ -273,12 +274,12 @@ private fun HandoffCard(
                     enabled = !state.handoffBusy,
                     shape = RoundedCornerShape(18.dp),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+                    keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); onSubmit() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 state.handoffError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                 Button(
-                    onClick = onSubmit,
+                    onClick = { focus.clearFocus(); onSubmit() },
                     enabled = state.canHandoff && state.codeReady,
                     shape = RoundedCornerShape(50),
                     modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -295,9 +296,9 @@ private fun HandoffCard(
 private fun IncidentsCard(state: OrderDetailState, onOpen: () -> Unit) {
     SoftCard {
         Text("Incidencias", style = MaterialTheme.typography.titleMedium)
-        if (state.incidentSaved) SuccessText("Incidencia registrada. La administración fue avisada.")
+        if (state.incidentSaved) SuccessText(if (state.incidentAddedAsNote) "Se agregó a la incidencia abierta." else "Incidencia registrada. La administración fue avisada.")
         if (state.canReportIncident) {
-            OutlinedButton(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text("Reportar incidencia") }
+            OutlinedButton(onClick = onOpen, modifier = Modifier.fillMaxWidth()) { Text(if (state.hasOpenIncident) "Agregar nota" else "Reportar incidencia") }
         }
         if (state.incidentsLoadFailed) {
             Text("No se pudo actualizar la lista de incidencias. Se muestra la última que se cargó.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
@@ -316,6 +317,7 @@ private fun IncidentRow(incident: FieldIncident) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(incident.status.label, style = MaterialTheme.typography.titleMedium)
             Text(incident.description, style = MaterialTheme.typography.bodyMedium)
+            com.grupo4.dlecheymielapp.ui.common.IncidentNotes(incident.notes)
             Text(
                 listOfNotNull(incident.reporterName, formatTimestamp(incident.recordedAt)).joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -328,7 +330,7 @@ private fun IncidentRow(incident: FieldIncident) {
 private fun IncidentDialog(state: OrderDetailState, onClose: () -> Unit, onTextChange: (String) -> Unit, onSubmit: () -> Unit) {
     AlertDialog(
         onDismissRequest = { if (!state.incidentBusy) onClose() },
-        title = { Text("Reportar incidencia") },
+        title = { Text(if (state.hasOpenIncident) "Agregar nota" else "Reportar incidencia") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(incidentIntro(state.hasOpenIncident), style = MaterialTheme.typography.bodyMedium)

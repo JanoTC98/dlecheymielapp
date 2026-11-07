@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import com.grupo4.dlecheymielapp.data.fulfillment.FieldSchedule
 import com.grupo4.dlecheymielapp.data.fulfillment.FulfillmentMode
 import com.grupo4.dlecheymielapp.data.fulfillment.HandlerOrderWork
@@ -83,6 +84,7 @@ data class CardOrder(
     val schedule: FieldSchedule? = null,
     val payAtDelivery: PayAtDeliveryInfo? = null,
     val incidentCount: Int = 0,
+    val openIncidentCount: Int = incidentCount,
 ) {
     /** The status in which the customer's code is asked: ready for pickup, or on its way for any delivery. */
     val handoffStatus: OrderStatus get() = if (mode == FulfillmentMode.PICKUP) OrderStatus.READY_FOR_PICKUP else OrderStatus.IN_TRANSIT
@@ -115,14 +117,14 @@ fun HandlerOrderWork.toCard() = CardOrder(
         ?: pickup?.let { listOf(it.pickupPointName, it.locationText).filter { part -> part.isNotBlank() }.joinToString(" · ") },
     reference = recipient?.reference?.takeIf { it.isNotBlank() },
     phone = recipient?.phone?.takeIf { it.isNotBlank() },
-    schedule = schedule, payAtDelivery = payAtDelivery, incidentCount = incidentCount,
+    schedule = schedule, payAtDelivery = payAtDelivery, incidentCount = incidentCount, openIncidentCount = openIncidentCount,
 )
 
 fun PickupGroupOrderWork.toCard(group: PickupGroupWorkDetail) = CardOrder(
     id = id, code = publicCode, status = if (delivered) OrderStatus.DELIVERED else status, mode = FulfillmentMode.PICKUP,
     name = customerName.ifBlank { "Cliente sin nombre" },
     place = listOfNotNull(group.pickupPoint.name, group.pickupPoint.locationText).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null },
-    payAtDelivery = payAtDelivery, incidentCount = incidentCount,
+    payAtDelivery = payAtDelivery, incidentCount = incidentCount, openIncidentCount = openIncidentCount,
 )
 
 /** Why the employee cannot request the payment link yet, or null when the backend has opened it. */
@@ -153,7 +155,7 @@ private fun accentFor(status: OrderStatus): Color = when (status) {
 fun FieldOrderCard(order: CardOrder, card: CardState, callbacks: CardCallbacks, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Surface(
-        modifier = modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface,
+        modifier = modifier.fillMaxWidth().testTag("order-card-${order.id}"), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
@@ -168,10 +170,10 @@ fun FieldOrderCard(order: CardOrder, card: CardState, callbacks: CardCallbacks, 
                 IconLine(Icons.Filled.Person, order.name, strong = true)
                 order.place?.let { IconLine(Icons.Filled.Place, it + (order.reference?.let { ref -> " • $ref" } ?: "")) }
                 order.schedule?.let { IconLine(Icons.Filled.Schedule, "${formatSlotDate(it.slotDate)} · ${it.timeRange}") }
-                if (order.incidentCount > 0) {
+                if (order.openIncidentCount > 0) {
                     IconLine(
                         Icons.Filled.WarningAmber,
-                        if (order.incidentCount == 1) "1 incidencia registrada" else "${order.incidentCount} incidencias registradas",
+                        if (order.openIncidentCount == 1) "Incidencia abierta" else "${order.openIncidentCount} incidencias abiertas",
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -196,14 +198,14 @@ fun FieldOrderCard(order: CardOrder, card: CardState, callbacks: CardCallbacks, 
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
                     }
                     Button(
-                        onClick = { callbacks.openIncident(order.id, order.code ?: "Pedido ${order.id}") },
+                        onClick = { callbacks.openIncident(order.id, order.code ?: "Pedido ${order.id}", order.openIncidentCount > 0) },
                         enabled = !order.status.isTerminal,
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = Brand.ErrorContainer, contentColor = Brand.Error),
                         modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Filled.WarningAmber, contentDescription = null, modifier = Modifier.padding(end = 6.dp).size(16.dp))
-                        Text("Incidencia")
+                        Text(if (order.openIncidentCount > 0) "Agregar nota" else "Incidencia")
                     }
                 }
             }
@@ -263,10 +265,8 @@ private fun HandoffArea(order: CardOrder, card: CardState, callbacks: CardCallba
 
         order.status.isTerminal -> Unit
 
-        // A reported incident holds the delivery until the Administrator decides. The card only knows how many incidents the order
-        // has, not which are open, so the open ones are checked in the order screen, where the code can still be entered.
-        order.status == order.handoffStatus && order.incidentCount > 0 -> Text(
-            "Este pedido tiene una incidencia. Ábralo para ver su estado: mientras esté abierta no se registra la entrega.",
+        order.status == order.handoffStatus && order.openIncidentCount > 0 -> Text(
+            "Este pedido tiene una incidencia abierta. La administración debe resolverla antes de registrar la entrega.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -320,10 +320,10 @@ fun CardActionDialogs(state: CardActionsState, callbacks: CardCallbacks) {
     state.incident?.let { draft ->
         AlertDialog(
             onDismissRequest = { if (!draft.busy) callbacks.closeIncident() },
-            title = { Text("Incidencia en ${draft.label}") },
+            title = { Text(if (draft.hasOpenIncident) "Agregar nota en ${draft.label}" else "Incidencia en ${draft.label}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Cuente qué pasó (cliente ausente, dirección incorrecta, no contesta…).", style = MaterialTheme.typography.bodyMedium)
+                    Text(if (draft.checking) "Comprobando incidencias abiertas…" else incidentIntro(draft.hasOpenIncident), style = MaterialTheme.typography.bodyMedium)
                     val counter = "${draft.text.length}/$MAX_INCIDENT_LENGTH"
                     OutlinedTextField(
                         value = draft.text, onValueChange = callbacks::onIncidentText, enabled = !draft.busy, minLines = 4,
@@ -334,7 +334,7 @@ fun CardActionDialogs(state: CardActionsState, callbacks: CardCallbacks) {
                 }
             },
             confirmButton = {
-                Button(onClick = callbacks::submitIncident, enabled = !draft.busy && draft.text.isNotBlank()) { Text(if (draft.busy) "Enviando…" else "Enviar") }
+                Button(onClick = callbacks::submitIncident, enabled = !draft.busy && !draft.checking && draft.text.isNotBlank()) { Text(if (draft.busy) "Enviando…" else "Enviar") }
             },
             dismissButton = { TextButton(onClick = callbacks::closeIncident, enabled = !draft.busy) { Text("Cancelar") } },
         )

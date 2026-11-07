@@ -30,7 +30,7 @@ interface HandlerApi {
     suspend fun incidents(@Path("id") id: Long): List<FieldIncident>
 
     @POST("api/v1/handler/orders/{id}/incidents")
-    suspend fun reportIncident(@Path("id") id: Long, @Body body: IncidentRequest): FieldIncident
+    suspend fun reportIncident(@Path("id") id: Long, @Body body: IncidentRequest): retrofit2.Response<FieldIncident>
 
     /** Any signed-in staff role; the server checks role and modality. The URL is a credential: never log or cache it. */
     @GET("api/v1/fulfillment/orders/{id}/payment-link")

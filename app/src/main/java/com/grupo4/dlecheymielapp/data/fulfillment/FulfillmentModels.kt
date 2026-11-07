@@ -85,6 +85,8 @@ data class HandlerOrderWork(
     val customerName: String = "",
     val incidentCount: Int = 0,
     val payAtDelivery: PayAtDeliveryInfo? = null,
+    /** Older deployed endpoints use incidentCount for OPEN incidents too. */
+    val openIncidentCount: Int = incidentCount,
 )
 
 @Serializable
@@ -99,6 +101,17 @@ data class FieldIncident(
     val status: IncidentStatus = IncidentStatus.UNKNOWN,
     val recordedAt: String,
     val resolvedAt: String? = null,
+    val notes: List<IncidentNote> = emptyList(),
+    @kotlinx.serialization.Transient val addedAsNote: Boolean = false,
+)
+
+@Serializable
+data class IncidentNote(
+    val id: Long,
+    val authorRole: String? = null,
+    val authorName: String? = null,
+    val text: String,
+    val recordedAt: String,
 )
 
 @Serializable

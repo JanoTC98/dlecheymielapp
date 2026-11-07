@@ -19,6 +19,7 @@ data class PickupGroupWork(
     val deliveredCount: Int = 0,
     val pendingCount: Int = 0,
     val incidentCount: Int = 0,
+    val openIncidentCount: Int = incidentCount,
 )
 
 @Serializable
@@ -30,6 +31,7 @@ data class PickupGroupOrderWork(
     val incidentCount: Int = 0,
     val delivered: Boolean = false,
     val payAtDelivery: PayAtDeliveryInfo? = null,
+    val openIncidentCount: Int = incidentCount,
 )
 
 @Serializable

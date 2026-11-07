@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.sp
 import com.grupo4.dlecheymielapp.R
 import com.grupo4.dlecheymielapp.data.fulfillment.PickupGroupWork
@@ -90,7 +91,7 @@ fun PickupGroupsScreen(state: HandlerListState, onRefresh: () -> Unit, onOpenGro
                                     listOf(
                                         Stat("Grupos", state.groups.size),
                                         Stat("Pedidos pendientes", state.groups.sumOf { it.pendingCount }),
-                                        Stat("Con incidencia", state.groups.count { it.incidentCount > 0 }),
+                                        Stat("Con incidencia", state.groups.count { it.openIncidentCount > 0 }),
                                     ),
                                 )
                             }
@@ -129,7 +130,7 @@ private fun GroupBar(timeRange: String, point: String?, detail: String?) {
 
 @Composable
 private fun GroupCard(group: PickupGroupWork, onClick: () -> Unit) {
-    SoftCard(onClick = onClick) {
+    SoftCard(modifier = Modifier.testTag("pickup-group-${group.groupKey}"), onClick = onClick) {
         GroupBar(group.schedule.timeRange, group.pickupPoint.name, listOfNotNull(group.university.name, group.pickupPoint.locationText).joinToString(" · "))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -137,7 +138,7 @@ private fun GroupCard(group: PickupGroupWork, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
             )
             if (group.pendingCount == 0) Pill("Todo entregado", Color(0xFFDDF3E4), Color(0xFF14532D))
-            if (group.incidentCount > 0) Pill("${group.incidentCount} incid.", Brand.ErrorContainer, Brand.Error)
+            if (group.openIncidentCount > 0) Pill("${group.openIncidentCount} incid. abiertas", Brand.ErrorContainer, Brand.Error)
         }
     }
 }
@@ -159,6 +160,7 @@ fun PickupGroupScreen(
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }
             Text(state.group?.pickupPoint?.name ?: "Grupo de recojo", style = MaterialTheme.typography.titleLarge)
         }
+        actions.notice?.let { SuccessBanner(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), onDismiss = callbacks::dismissNotice) }
         val group = state.group
         when {
             state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -189,7 +191,6 @@ private fun GroupOrders(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        actions.notice?.let { notice -> item(key = "notice") { SuccessBanner(notice, onDismiss = callbacks::dismissNotice) } }
         error?.let { item(key = "error") { ErrorText(it) } }
         item(key = "bar") {
             SoftCard {

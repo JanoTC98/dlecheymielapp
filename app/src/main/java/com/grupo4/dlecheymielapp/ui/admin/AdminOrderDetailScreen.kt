@@ -325,6 +325,7 @@ private fun IncidentBlock(incident: AdminIncident, order: AdminOrderDetail, busy
                 }
             }
             if (incident.description.isNotBlank()) Text(incident.description, style = MaterialTheme.typography.bodyMedium)
+            com.grupo4.dlecheymielapp.ui.common.IncidentNotes(incident.notes)
             Text(
                 listOfNotNull(incident.reporterRole?.label, incident.reporterName, formatTimestamp(incident.recordedAt)).filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,

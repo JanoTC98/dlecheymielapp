@@ -42,7 +42,9 @@ fun Throwable.toGenericMessage(): String = when (this) {
         status == 403 -> "No tiene permiso para esta acción."
         status == 404 -> "El pedido ya no está asignado a su cuenta."
         code == "ORDER_STATE_CHANGED" -> "El pedido cambió de estado. Se actualizó la lista."
-        status == 429 -> "Demasiados intentos. Espere un momento."
+        status == 429 -> retryAfterSeconds?.takeIf { it > 0 }?.let {
+            "Demasiados intentos. Espere $it segundos antes de volver a intentarlo."
+        } ?: "Demasiados intentos. Espere un momento."
         status in 500..599 -> "El servidor tuvo un problema. Inténtelo de nuevo en un momento."
         else -> message ?: "No se pudo completar la operación."
     }

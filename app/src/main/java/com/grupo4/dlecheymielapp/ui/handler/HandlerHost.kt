@@ -143,6 +143,7 @@ fun FieldOrderDetail(id: Long, gateway: FieldGateway, onUnauthorized: () -> Unit
         factory = viewModelFactory { initializer { OrderDetailViewModel(id, gateway, onUnauthorized) } },
     )
     val state by vm.state.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(vm) { vm.refreshOnOpen() }
     // The payment link must not outlive the screen that shows it.
     DisposableEffect(vm) { onDispose { vm.hidePaymentLink() } }
     OrderDetailScreen(

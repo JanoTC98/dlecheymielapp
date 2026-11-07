@@ -100,6 +100,7 @@ data class AdminIncident(
     val escalationLevel: Int = 0,
     val resolvedAt: String? = null,
     val resolvedBy: String? = null,
+    val notes: List<com.grupo4.dlecheymielapp.data.fulfillment.IncidentNote> = emptyList(),
 )
 
 /**

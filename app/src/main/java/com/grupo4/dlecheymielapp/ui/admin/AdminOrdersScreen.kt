@@ -124,12 +124,13 @@ fun AdminOrdersScreen(
 @Composable
 private fun SearchField(code: String, onSearch: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf(code) }
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     OutlinedTextField(
         value = text, onValueChange = { text = it }, singleLine = true,
         label = { Text("Buscar por código") },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onSearch(text) }),
+        keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); onSearch(text) }),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     )
 }

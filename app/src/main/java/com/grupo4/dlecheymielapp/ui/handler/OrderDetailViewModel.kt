@@ -28,9 +28,9 @@ import kotlinx.coroutines.launch
 
 const val MAX_INCIDENT_LENGTH = 2000
 
-/** What the incident dialog says first. An order with an open incident gets a warning: every report opens another one. */
+/** The server appends follow-ups to the open incident, except for separate unpaid-payment incidents. */
 internal fun incidentIntro(hasOpenIncident: Boolean): String =
-    if (hasOpenIncident) "Este pedido ya tiene una incidencia abierta. Si es el mismo problema, no hace falta reportarlo otra vez; si es distinto, descríbalo."
+    if (hasOpenIncident) "Este pedido ya tiene una incidencia abierta. El seguimiento se agregará como nota a la incidencia abierta; los casos de impago se gestionan por separado."
     else "Cuente qué pasó (cliente ausente, dirección incorrecta, no contesta…)."
 
 data class OrderDetailState(
@@ -51,6 +51,7 @@ data class OrderDetailState(
     val incidentBusy: Boolean = false,
     val incidentError: String? = null,
     val incidentSaved: Boolean = false,
+    val incidentAddedAsNote: Boolean = false,
     /** The incident list could not be read: the screen must not claim there are none. */
     val incidentsLoadFailed: Boolean = false,
 
@@ -81,7 +82,7 @@ data class OrderDetailState(
     val closesWithoutCode: Boolean get() = capabilities.canComplete && order?.payAtDelivery == null
 
     /** The Administrator decides an open incident (reassign, refund, write off); until then the order cannot be handed over. */
-    val hasOpenIncident: Boolean get() = incidents.any { it.status == IncidentStatus.OPEN }
+    val hasOpenIncident: Boolean get() = (order?.openIncidentCount ?: 0) > 0 || incidents.any { it.status == IncidentStatus.OPEN }
 
     /** An on-delivery order whose code was already accepted only waits for its payment; the code is not asked for again. */
     val codeAlreadyValidated: Boolean
@@ -108,8 +109,14 @@ class OrderDetailViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(OrderDetailState(capabilities = gateway.capabilities))
     val state: StateFlow<OrderDetailState> = _state.asStateFlow()
+    private var screenOpened = false
 
     init { load() }
+
+    /** This ViewModel survives navigation back to the queue, where another action may append notes or change the order. */
+    fun refreshOnOpen() {
+        if (screenOpened) load() else screenOpened = true
+    }
 
     fun load() {
         viewModelScope.launch { fetch() }
@@ -277,13 +284,13 @@ class OrderDetailViewModel(
     fun submitIncident() {
         val current = _state.value
         val text = current.incidentText.trim()
-        // Every POST creates a new incident (no idempotency key): ignore taps while one is in flight.
+        // No idempotency key: a second POST could append the same note twice.
         if (current.incidentBusy || text.isEmpty()) return
         _state.update { it.copy(incidentBusy = true, incidentError = null) }
         viewModelScope.launch {
             try {
-                gateway.reportIncident(orderId, text)
-                _state.update { it.copy(incidentBusy = false, incidentDialogOpen = false, incidentText = "", incidentSaved = true) }
+                val result = gateway.reportIncident(orderId, text)
+                _state.update { it.copy(incidentBusy = false, incidentDialogOpen = false, incidentText = "", incidentSaved = true, incidentAddedAsNote = result.addedAsNote) }
                 load()
             } catch (e: CancellationException) {
                 throw e

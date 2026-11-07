@@ -174,6 +174,7 @@ class CardActionsTest {
         val actions = actions(gateway)
 
         actions.openIncident(5, "DLM-0005")
+        runCurrent()
         actions.onIncidentText("  Cliente no contesta  ")
         actions.submitIncident()
         actions.submitIncident()
@@ -195,6 +196,7 @@ class CardActionsTest {
         assertNotNull(actions.state.value.card(7).error)
 
         actions.openIncident(7, "DLM-7")
+        runCurrent()
         actions.onIncidentText("Cliente ausente")
         actions.submitIncident()
         advanceUntilIdle()

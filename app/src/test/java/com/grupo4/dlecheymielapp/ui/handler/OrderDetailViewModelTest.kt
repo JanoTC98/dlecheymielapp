@@ -74,6 +74,21 @@ class OrderDetailViewModelTest {
     private val incident = FieldIncident(id = 7, orderId = 1, description = "Cliente ausente", recordedAt = "2026-11-06T00:42:00")
 
     @Test
+    fun reopeningDetailReloadsNotesAddedFromTheQueue() = runTest(dispatcher) {
+        val gateway = DetailGateway().apply { incidentList = listOf(incident) }
+        val vm = OrderDetailViewModel(1, gateway) {}
+        vm.refreshOnOpen()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.incidents.single().notes.isEmpty())
+        val updated = incident.copy(notes = listOf(com.grupo4.dlecheymielapp.data.fulfillment.IncidentNote(
+            1, authorName = "Demo", text = "Seguimiento", recordedAt = "2026-11-06T01:00:00")))
+        gateway.incidentList = listOf(updated)
+        vm.refreshOnOpen()
+        advanceUntilIdle()
+        assertEquals("Seguimiento", vm.state.value.incidents.single().notes.single().text)
+    }
+
+    @Test
     fun anIncidentListThatCannotBeReadIsReportedInsteadOfShownAsEmpty() = runTest(dispatcher) {
         val gateway = DetailGateway().apply { incidentList = listOf(incident) }
         val vm = OrderDetailViewModel(1, gateway) {}

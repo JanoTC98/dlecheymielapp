@@ -140,6 +140,6 @@ class OrderDetailFormsTest {
 
         assertEquals("Cuente qué pasó (cliente ausente, dirección incorrecta, no contesta…).", plain)
         assertTrue(warned.startsWith("Este pedido ya tiene una incidencia abierta."))
-        assertTrue(warned.contains("mismo problema"))
+        assertTrue(warned.contains("como nota"))
     }
 }

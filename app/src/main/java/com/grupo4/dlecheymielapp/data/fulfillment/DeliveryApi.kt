@@ -19,6 +19,7 @@ data class DeliverySummary(
     val addressPreview: String? = null,
     val incidentCount: Int = 0,
     val payAtDelivery: PayAtDeliveryInfo? = null,
+    val openIncidentCount: Int = incidentCount,
 )
 
 @Serializable
@@ -40,6 +41,7 @@ data class DeliveryDetail(
     val incidentCount: Int = 0,
     val provider: Provider? = null,
     val payAtDelivery: PayAtDeliveryInfo? = null,
+    val openIncidentCount: Int = incidentCount,
 )
 
 /** The Operador has no incident list of its own: incidents and the provider arrive together. */
@@ -67,7 +69,7 @@ interface DeliveryApi {
     suspend fun incidents(@Path("scope") scope: String, @Path("id") id: Long): List<FieldIncident>
 
     @POST("api/v1/{scope}/orders/{id}/incidents")
-    suspend fun reportIncident(@Path("scope") scope: String, @Path("id") id: Long, @Body body: IncidentRequest): FieldIncident
+    suspend fun reportIncident(@Path("scope") scope: String, @Path("id") id: Long, @Body body: IncidentRequest): retrofit2.Response<FieldIncident>
 
     /** Operador only. Takes no body (the server answers 400 if one is sent). */
     @POST("api/v1/operator/orders/{id}/complete")

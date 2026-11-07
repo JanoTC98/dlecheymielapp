@@ -22,7 +22,15 @@ class HandlerRepository(private val api: HandlerApi, private val json: Json) : F
         apiCall(json) { api.handoff(id, HandoffRequest(code.trim().uppercase())) }
 
     override suspend fun reportIncident(id: Long, description: String) =
-        apiCall(json) { api.reportIncident(id, IncidentRequest(description.trim())) }
+        reportIncidentCall(json) { api.reportIncident(id, IncidentRequest(description.trim())) }
 
     override suspend fun paymentLink(id: Long) = apiCall(json) { api.paymentLink(id) }.url
+}
+
+/** HTTP 200 adds a note; HTTP 201 creates the incident. Never infer success from a stale local list. */
+internal suspend fun reportIncidentCall(json: Json, block: suspend () -> retrofit2.Response<FieldIncident>): FieldIncident = apiCall(json) {
+    val response = block()
+    if (!response.isSuccessful) throw retrofit2.HttpException(response)
+    val incident = response.body() ?: throw java.io.IOException("Incident response is empty")
+    incident.copy(addedAsNote = response.code() == 200)
 }

@@ -33,6 +33,8 @@ data class IncidentDraft(
     val text: String = "",
     val busy: Boolean = false,
     val error: String? = null,
+    val hasOpenIncident: Boolean = false,
+    val checking: Boolean = false,
 )
 
 /** The payment QR panel opened from a card. [url] is a credential: memory only, dropped when the panel closes. */
@@ -90,7 +92,7 @@ interface CardCallbacks {
     fun cancelAdvance()
     fun askComplete(id: Long?)
     fun complete()
-    fun openIncident(id: Long, label: String)
+    fun openIncident(id: Long, label: String, hasOpenIncident: Boolean = false)
     fun onIncidentText(value: String)
     fun closeIncident()
     fun submitIncident()
@@ -111,7 +113,7 @@ object NoCardCallbacks : CardCallbacks {
     override fun cancelAdvance() = Unit
     override fun askComplete(id: Long?) = Unit
     override fun complete() = Unit
-    override fun openIncident(id: Long, label: String) = Unit
+    override fun openIncident(id: Long, label: String, hasOpenIncident: Boolean) = Unit
     override fun onIncidentText(value: String) = Unit
     override fun closeIncident() = Unit
     override fun submitIncident() = Unit
@@ -130,7 +132,7 @@ const val AWAITING_PAYMENT_MESSAGE = "Código validado. El pedido se cerrará cu
 
 /**
  * Acts on orders straight from a list card, with the same rules as the order's own screen: one request at a time per
- * order, a stale state is reloaded instead of retried, and an incident is sent once (every POST creates a new one).
+ * order, a stale state is reloaded instead of retried, and each incident or follow-up note is sent once.
  * A card stays locked from the first tap until [onChanged] has finished reloading the list, so a second tap cannot
  * act on the status the server is about to replace. [onChanged] must suspend until the reload is done.
  */
@@ -250,7 +252,20 @@ class CardActions(
         }
     }
 
-    override fun openIncident(id: Long, label: String) = _state.update { it.copy(incident = IncidentDraft(id, label), notice = null) }
+    override fun openIncident(id: Long, label: String, hasOpenIncident: Boolean) {
+        _state.update { it.copy(incident = IncidentDraft(id, label, hasOpenIncident = hasOpenIncident, checking = true), notice = null) }
+        scope.launch {
+            try {
+                val open = gateway.incidents(id).any { it.status == com.grupo4.dlecheymielapp.data.fulfillment.IncidentStatus.OPEN }
+                _state.update { s -> if (s.incident?.orderId == id) s.copy(incident = s.incident.copy(hasOpenIncident = open, checking = false)) else s }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                handleAuth(e)
+                _state.update { s -> if (s.incident?.orderId == id) s.copy(incident = s.incident.copy(checking = false, error = "No se pudo comprobar si hay incidencias abiertas. ${e.toIncidentMessage()}")) else s }
+            }
+        }
+    }
 
     override fun onIncidentText(value: String) =
         _state.update { s -> s.copy(incident = s.incident?.copy(text = value.take(MAX_INCIDENT_LENGTH), error = null)) }
@@ -260,12 +275,12 @@ class CardActions(
     override fun submitIncident() {
         val draft = _state.value.incident ?: return
         val text = draft.text.trim()
-        if (draft.busy || text.isEmpty()) return
+        if (draft.busy || draft.checking || text.isEmpty()) return
         _state.update { it.copy(incident = draft.copy(busy = true, error = null)) }
         scope.launch {
             try {
-                gateway.reportIncident(draft.orderId, text)
-                _state.update { it.copy(incident = null, notice = "Incidencia registrada. La administración fue avisada.") }
+                val result = gateway.reportIncident(draft.orderId, text)
+                _state.update { it.copy(incident = null, notice = if (result.addedAsNote) "Se agregó a la incidencia abierta." else "Incidencia registrada. La administración fue avisada.") }
                 // The order is on hold now: a code error or message from before no longer describes it.
                 edit(draft.orderId) { it.copy(error = null, message = null) }
                 onChanged()

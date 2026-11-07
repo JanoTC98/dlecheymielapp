@@ -29,7 +29,7 @@ class DeliveryRepository(
         apiCall(json) { api.handoff(scope.path, id, HandoffRequest(code.trim().uppercase())) }
 
     override suspend fun reportIncident(id: Long, description: String) =
-        apiCall(json) { api.reportIncident(scope.path, id, IncidentRequest(description.trim())) }
+        reportIncidentCall(json) { api.reportIncident(scope.path, id, IncidentRequest(description.trim())) }
 
     override suspend fun paymentLink(id: Long) = apiCall(json) { api.paymentLink(id) }.url
 
@@ -56,7 +56,7 @@ class DeliveryRepository(
 private fun DeliverySummary.toWork() = HandlerOrderWork(
     id = id, publicCode = publicCode, status = status, mode = FulfillmentMode.DELIVERY, schedule = schedule,
     recipient = Recipient(name = districtName ?: "Delivery", phone = "", place = addressPreview.orEmpty()),
-    customerName = districtName ?: "Delivery", incidentCount = incidentCount, payAtDelivery = payAtDelivery,
+    customerName = districtName ?: "Delivery", incidentCount = incidentCount, payAtDelivery = payAtDelivery, openIncidentCount = openIncidentCount,
 )
 
 /**
@@ -80,5 +80,5 @@ private fun DeliveryDetail.toWork() = HandlerOrderWork(
         place = deliveryPlace(delivery.address, delivery.districtName),
         reference = delivery.reference,
     ),
-    customerName = customerName, incidentCount = incidentCount, payAtDelivery = payAtDelivery,
+    customerName = customerName, incidentCount = incidentCount, payAtDelivery = payAtDelivery, openIncidentCount = openIncidentCount,
 )
