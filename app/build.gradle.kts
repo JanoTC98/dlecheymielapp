@@ -104,6 +104,10 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation(libs.okhttp.mockwebserver)
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 // Copies the release R8 mapping.txt to app/release-mappings/<versionCode>/ (git-ignored) so crash stack traces from
