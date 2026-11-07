@@ -84,7 +84,9 @@ object OrderAlertScheduler {
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
             .setPersisted(true)
             .build()
-        scheduler.schedule(job)
+        if (scheduler.schedule(job) != JobScheduler.RESULT_SUCCESS) {
+            android.util.Log.w("OrderAlertScheduler", "Order alert job was not accepted; will retry on resume")
+        }
     }
 
     fun cancel(context: Context) {
@@ -109,16 +111,16 @@ class OrderAlertJobService : JobService() {
                 throw e
             } catch (_: Exception) {
                 // Offline, a server error or an expired session: the next period tries again.
-            } finally {
-                jobFinished(params, false)
             }
+            // A stopped/cancelled run belongs to onStopJob; do not race its reschedule decision.
+            jobFinished(params, false)
         }
         return true
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
         running?.cancel()
-        return false
+        return true
     }
 
     override fun onDestroy() {

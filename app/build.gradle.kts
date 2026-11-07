@@ -33,6 +33,8 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Live tests mutate disposable demo orders and require explicit credentials/fixtures at invocation time.
+        testInstrumentationRunnerArguments["notAnnotation"] = "com.grupo4.dlecheymielapp.LiveBackendTest"
 
         // Background check (every 15 min, the platform minimum) that notifies a signed-in user of new work in their queue.
         // Flip to false to ship without it; the foreground polling above is a separate switch.
